@@ -1260,7 +1260,8 @@ async function loadProject(path, dirHandle = null) {
   log('预加载完成', 'ok');
 
   // 确定入口页面
-  const rootId = configData?.rootPageId || STATE.graph['INDEX'] ? 'INDEX' : Object.keys(STATE.graph).find(id => id !== 'config');
+  // 【修改点】修复运算符优先级 bug：原代码 (A || B) ? 'INDEX' : C 导致 rootPageId 被忽略
+  const rootId = configData?.rootPageId || (STATE.graph['INDEX'] ? 'INDEX' : Object.keys(STATE.graph).find(id => id !== 'config'));
   log(`入口页面: ${rootId}`, 'info');
 
   // 初始化视图
@@ -3888,6 +3889,21 @@ async function createConnection(fromId, toId) {
   log(`创建连接: ${fromId} → ${toId}`, 'ok');
 }
 
+// 【修改点】生成干净的 config.json 数据（去掉内部字段 _id）
+function buildConfigJSON() {
+  const cfg = STATE.graph['config'] || {};
+  const clean = {};
+  for (const [k, v] of Object.entries(cfg)) {
+    if (k.startsWith('_')) continue; // 跳过内部字段
+    clean[k] = v;
+  }
+  // 确保有 rootPageId：当前焦点页面或 INDEX 或第一个页面
+  if (!clean.rootPageId) {
+    clean.rootPageId = STATE.focusId || STATE.graph['INDEX'] ? 'INDEX' : Object.keys(STATE.graph).find(id => id !== 'config');
+  }
+  return JSON.stringify(clean, null, 2);
+}
+
 async function saveProject() {
   try {
     if (STATE.dirHandle) {
@@ -3899,6 +3915,11 @@ async function saveProject() {
         await writable.write(JSON.stringify(page, null, 2));
         await writable.close();
       }
+      // 【修改点】同时保存 config.json
+      const configHandle = await STATE.dirHandle.getFileHandle('config.json', { create: true });
+      const configWritable = await configHandle.createWritable();
+      await configWritable.write(buildConfigJSON());
+      await configWritable.close();
       log('项目已保存到文件夹', 'ok');
       await showDialog({ title: '✅ 保存成功', msg: '所有 JSON 文件已更新。', buttons: [{ text: '确定', value: null, primary: true }] });
     } else {
@@ -3908,6 +3929,8 @@ async function saveProject() {
         if (id === 'config') continue;
         zip.file(`${id}.json`, JSON.stringify(page, null, 2));
       }
+      // 【修改点】ZIP 中包含 config.json，用于记录主页配置
+      zip.file('config.json', buildConfigJSON());
       const content = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
@@ -3982,7 +4005,8 @@ async function openProjectDialog() {
         STATE.projectPath = file.name.replace(/\.zip$/, '');
         STATE.dirHandle = null;
         buildSearchIndex();
-        const rootId = graph.config?.rootPageId || Object.keys(graph)[0];
+        // 【修改点】优先读取 config.json 中的 rootPageId，否则找第一个非 config 页面
+        const rootId = graph.config?.rootPageId || Object.keys(graph).find(id => id !== 'config');
         await navigateTo(rootId, false);
         showApp();
         log('ZIP 项目加载完成', 'ok');
