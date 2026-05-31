@@ -901,9 +901,12 @@ window.addEventListener('unhandledrejection', function(e) {
 _logRaw('info', '日志系统就绪');
 
 // ===== 在线项目配置（用户可修改）=====
-// 【修改点】如需更换默认在线项目链接，请修改下方变量值：
-// Cloudflare 部署版：ZIP 与 index.html 同域部署，避免跨域 CORS 问题
-const ONLINE_PROJECT_URL = './graduation.zip';
+// 【修改点】主要方式：你的域名直接加载
+const ONLINE_PROJECT_URL_PRIMARY = 'https://brain.3egames.cloud/graduation.zip';
+// 【修改点】备用方式：同域根目录（主要方式失败时自动回退）
+const ONLINE_PROJECT_URL_FALLBACK = './graduation.zip';
+// 默认使用主要方式
+const ONLINE_PROJECT_URL = ONLINE_PROJECT_URL_PRIMARY;
 
 // ===== 全局状态 =====
 const STATE = {
@@ -1109,7 +1112,9 @@ async function loadProjectViaDirHandle(dirHandle) {
 async function loadProjectViaFetch(path) {
   log(`使用 fetch 加载: ${path}`, 'info');
   try {
-    const configUrl = `file://${path.replace(/\\/g, '/')}/config.json`;
+    // 【修改点】修复：去掉 file://，改用智能路径拼接（支持相对路径和绝对路径）
+    const basePath = path.replace(/\\/g, '/').replace(/\/$/, '');
+    const configUrl = basePath ? `${basePath}/config.json` : 'config.json';
     log(`读取 config.json...`, 'info');
     const resp = await fetch(configUrl);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1117,8 +1122,6 @@ async function loadProjectViaFetch(path) {
     log('config.json 解析成功', 'ok');
 
     // 列举所有 json
-    const listResp = await fetch(configUrl);
-    // file:// 不支持目录列举，用固定方式
     const ids = [];
     if (configData.rootPageId) ids.push(configData.rootPageId);
     if (Array.isArray(configData.defaults?.rootPages)) ids.push(...configData.defaults.rootPages);
@@ -1129,7 +1132,7 @@ async function loadProjectViaFetch(path) {
 
     async function scanChildren(pageId) {
       if (!pageId || pageId === 'config') return;
-      const url = `file://${path.replace(/\\/g, '/')}/${pageId}.json`;
+      const url = basePath ? `${basePath}/${pageId}.json` : `${pageId}.json`;
       try {
         const r = await fetch(url);
         if (!r.ok) return;
@@ -1170,7 +1173,8 @@ async function loadProjectViaFetch(path) {
 }
 
 // 【修改点】从在线 URL 加载 ZIP 项目（支持 http/https 链接）
-async function loadProjectFromURL(url) {
+// fallbackUrl: 主要 URL 加载失败时自动尝试的备用地址
+async function loadProjectFromURL(url, fallbackUrl = null) {
   log(`从在线地址加载 ZIP: ${url}`, 'info');
   try {
     const resp = await fetch(url);
@@ -1202,6 +1206,10 @@ async function loadProjectFromURL(url) {
     return graph.config || null;
   } catch (e) {
     log(`在线加载失败: ${e.message}`, 'err');
+    if (fallbackUrl && fallbackUrl !== url) {
+      log(`尝试备用地址: ${fallbackUrl}`, 'warn');
+      return await loadProjectFromURL(fallbackUrl, null);
+    }
     return null;
   }
 }
@@ -1218,9 +1226,9 @@ async function loadProject(path, dirHandle = null) {
   let configData;
   if (dirHandle) {
     configData = await loadProjectViaDirHandle(dirHandle);
-  } else if (/^https?:\/\//.test(path)) {
-    // 【修改点】在线 URL 路径，直接 fetch ZIP
-    configData = await loadProjectFromURL(path);
+  } else if (/^https?:\/\//.test(path) || /\.zip$/i.test(path)) {
+    // 【修改点】在线 URL 或 ZIP 文件路径，直接 fetch ZIP
+    configData = await loadProjectFromURL(path, ONLINE_PROJECT_URL_FALLBACK);
   } else {
     configData = await loadProjectViaFetch(path);
   }
@@ -1285,7 +1293,9 @@ async function preloadAllRelated() {
         const file = await handle.getFile();
         text = await file.text();
       } else {
-        const url = `file://${STATE.projectPath.replace(/\\/g, '/')}/${mid}.json`;
+        // 【修改点】修复：智能拼接 URL，不使用 file://
+        const basePath = STATE.projectPath.replace(/\\/g, '/').replace(/\/$/, '');
+        const url = basePath ? `${basePath}/${mid}.json` : `${mid}.json`;
         const r = await fetch(url);
         if (!r.ok) continue;
         text = await r.text();
