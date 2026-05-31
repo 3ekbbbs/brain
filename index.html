@@ -1,0 +1,4520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrainSphere - 词条关系图</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* ===== CSS 变量 ===== */
+:root {
+  --bg: #1a1a2e;
+  --panel-bg: rgba(26,26,46,0.96);
+  --panel-border: rgba(255,255,255,0.08);
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #4a90d9;
+  --accent2: #6ab0ff;
+  --radius: 12px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --font: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  overflow: hidden; font-family: var(--font);
+  background: var(--bg); color: var(--text);
+  user-select: none;
+}
+
+/* ===== 加载页面 ===== */
+#loading-screen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px;
+}
+#loading-logo {
+  font-size: 48px; margin-bottom: 8px;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+}
+#loading-title { font-size: 24px; font-weight: bold; color: var(--accent2); }
+#loading-sub { font-size: 14px; color: var(--text-dim); }
+#loading-progress {
+  width: 280px; height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px; overflow: hidden; margin-top: 8px;
+}
+#loading-bar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.3s ease;
+}
+#loading-log {
+  margin-top: 16px; width: 500px; max-height: 180px;
+  background: rgba(0,0,0,0.3); border-radius: var(--radius);
+  padding: 12px; overflow-y: auto; font-size: 12px;
+  color: #8be; font-family: "Consolas", monospace;
+  display: none;
+}
+#loading-log::-webkit-scrollbar { width: 4px; }
+#loading-log::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+.log-line { padding: 1px 0; }
+.log-ok { color: #8e8; }
+.log-err { color: #e88; }
+.log-info { color: #8be; }
+
+/* ===== 欢迎页 ===== */
+#welcome-screen {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 20px;
+}
+.welcome-title {
+  font-size: 32px; font-weight: bold;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+.welcome-sub { color: var(--text-dim); font-size: 14px; }
+.welcome-cards {
+  display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;
+  margin-top: 16px;
+}
+.welcome-card {
+  width: 240px; padding: 24px; border-radius: var(--radius);
+  background: var(--panel-bg); border: 1px solid var(--panel-border);
+  cursor: pointer; transition: all 0.2s; text-align: center;
+}
+.welcome-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow); }
+.welcome-card-icon { font-size: 36px; margin-bottom: 12px; }
+.welcome-card-title { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+.welcome-card-desc { font-size: 12px; color: var(--text-dim); }
+.welcome-divider { width: 400px; height: 1px; background: var(--panel-border); margin: 8px 0; }
+.welcome-recent h3 { font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
+.recent-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; color: var(--text-dim); width: 380px;
+  transition: background 0.2s;
+}
+.recent-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.recent-item-icon { font-size: 16px; }
+.recent-item-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-item-del {
+  font-size: 12px; color: #e88; opacity: 0; cursor: pointer;
+  transition: opacity 0.2s;
+}
+.recent-item:hover .recent-item-del { opacity: 1; }
+
+/* ===== 主应用 ===== */
+#app { display: none; width: 100vw; height: 100vh; position: relative; }
+
+/* ===== 顶部栏 ===== */
+#topbar {
+  position: absolute; top: 0; left: 0; right: 0; height: 44px; z-index: 100;
+  background: var(--panel-bg); border-bottom: 1px solid var(--panel-border);
+  display: flex; align-items: center; padding: 0 16px; gap: 8px;
+}
+.topbar-btn {
+  padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer;
+  font-size: 13px; font-family: inherit; background: rgba(255,255,255,0.06);
+  color: var(--text); transition: background 0.2s;
+}
+.topbar-btn:hover { background: rgba(255,255,255,0.12); }
+.topbar-btn.active { background: var(--accent); color: #fff; }
+.topbar-sep { width: 1px; height: 20px; background: var(--panel-border); margin: 0 4px; }
+.topbar-title { flex: 1; text-align: center; font-size: 14px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-title strong { color: var(--accent2); }
+
+/* ===== 左侧工具栏 ===== */
+#left-toolbar {
+  position: absolute; left: 12px; top: 60px; z-index: 100;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tool-btn {
+  width: 40px; height: 40px; border-radius: 10px; border: none; cursor: pointer;
+  font-size: 18px; background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--text); display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; position: relative;
+}
+.tool-btn:hover { border-color: var(--accent); background: rgba(74,144,217,0.15); }
+.tool-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.tool-btn[data-tip]:hover::after {
+  content: attr(data-tip); position: absolute; left: 48px; top: 50%;
+  transform: translateY(-50%); background: rgba(0,0,0,0.85);
+  color: #fff; font-size: 12px; padding: 4px 8px; border-radius: 6px;
+  white-space: nowrap; pointer-events: none; z-index: 10;
+}
+#btn-minimap-toggle {
+  width: 0px;/*此处不是bug,有意为之*/
+  height: 0px;/*此处不是bug,有意为之*/
+  border-radius: 0px;/*此处不是bug,有意为之*/
+  font-size: 0px;/*此处不是bug,有意为之*/
+  padding-block: 0px;/*此处不是bug,有意为之*/
+  padding-inline: 0px;/*此处不是bug,有意为之*/
+}
+
+/* ===== 右侧历史面板 ===== */
+#right-panel {
+  position: absolute; right: 12px; top: 60px; bottom: 12px; width: 240px;
+  z-index: 100; display: flex; flex-direction: column; gap: 6px;
+  transition: width 0.2s;
+
+}
+#right-panel.collapsed { width: 40px; }
+#history-toggle {
+  width: 40px; height: 40px; border-radius: 10px; border: none; cursor: pointer;
+  font-size: 18px; background: var(--panel-bg);
+  border: 1px solid var(--panel-border); color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; flex-shrink: 0;
+  margin-left: auto;   /* 靠右 */
+}
+#history-toggle:hover { border-color: var(--accent); }
+#mobile-toggle {
+  width: 0px; height: 0px; border-radius: 0px; border: none; cursor: pointer;/*此处不是bug,有意为之*/
+  font-size: 0px; background: var(--panel-bg);
+  border: 0px solid var(--panel-border); color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; flex-shrink: 0;/*此处不是bug,有意为之*/
+}
+#mobile-toggle:hover { border-color: var(--accent); }
+#mobile-toggle.active {
+  background: rgba(110,200,110,0.15);
+  border-color: rgba(110,200,110,0.4);
+}
+#history-panel {
+  flex: 1; background: var(--panel-bg); border: 1px solid var(--panel-border);
+  border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column;
+  min-height: 0;
+}
+#history-panel.collapsed { display: none; }
+#history-header {
+  padding: 10px 12px; font-size: 12px; color: var(--text-dim);
+  border-bottom: 1px solid var(--panel-border); display: flex;
+  align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+#history-list {
+  flex: 1; overflow-y: auto; padding: 4px;
+}
+#history-list::-webkit-scrollbar { width: 4px; }
+#history-list::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+.history-item {
+  padding: 8px 10px; border-radius: 6px; cursor: pointer;
+  font-size: 13px; display: flex; align-items: center; gap: 8px;
+  transition: background 0.15s; margin-bottom: 2px;
+}
+.history-item:hover { background: rgba(255,255,255,0.06); }
+.history-item.current { background: rgba(74,144,217,0.2); color: var(--accent2); }
+.history-item-dot { font-size: 10px; flex-shrink: 0; }
+.history-item-word { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-item-time { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+
+/* ===== Canvas ===== */
+#canvas-container {
+  position: absolute; inset: 0; overflow: hidden;
+}
+#main-canvas { display: block; cursor: grab; }
+#main-canvas:active { cursor: grabbing; }
+
+/* ===== 搜索浮层 ===== */
+#search-overlay {
+  position: absolute; top: 44px; left: 0; right: 0; z-index: 200;
+  display: none; background: var(--panel-bg);
+  border-bottom: 1px solid var(--panel-border);
+  padding: 12px; display: none;
+}
+#search-box {
+  width: 100%; max-width: 600px; margin: 0 auto; display: block;
+  padding: 10px 16px; border-radius: 10px; border: 1px solid var(--panel-border);
+  background: rgba(255,255,255,0.06); color: var(--text); font-size: 15px;
+  font-family: inherit; outline: none; box-sizing: border-box;
+}
+#search-box:focus { border-color: var(--accent); }
+#search-results {
+  max-width: 600px; margin: 8px auto 0; max-height: 300px; overflow-y: auto;
+}
+.search-result-item {
+  padding: 10px 16px; border-radius: 8px; cursor: pointer;
+  transition: background 0.15s; display: flex; align-items: center; gap: 10px;
+  color: var(--text);
+}
+.search-result-item:hover { background: rgba(255,255,255,0.06); }
+.search-result-word { font-size: 14px; font-weight: bold; color: var(--text); }
+.search-result-path { font-size: 12px; color: var(--text-dim); }
+
+/* ===== 气泡提示 ===== */
+#tooltip {
+  position: absolute; z-index: 500; pointer-events: none;
+  background: rgba(0,0,0,0.85); color: #fff;
+  padding: 10px 14px; border-radius: 10px; font-size: 13px;
+  max-width: 260px; display: none; line-height: 1.5;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#tooltip.visible { display: block; }
+#tooltip-title { font-weight: bold; color: var(--accent2); margin-bottom: 4px; font-size: 14px; }
+#tooltip-desc { color: #ccc; }
+
+/* ===== 设置面板 ===== */
+#settings-panel {
+  position: absolute; top: 52px; right: 60px; z-index: 300;
+  background: var(--panel-bg); border: 1px solid var(--panel-border);
+  border-radius: var(--radius); padding: 16px; width: 220px;
+  display: none; box-shadow: var(--shadow);
+}
+#settings-panel.visible { display: block; }
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; font-size: 13px;
+}
+.settings-row:last-child { margin-bottom: 0; }
+.settings-label { color: var(--text-dim); }
+select, input[type="range"] {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 12px;
+  font-family: inherit; outline: none;
+}
+select { cursor: pointer; }
+
+/* ===== 对话框 ===== */
+#dialog-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center;
+}
+#dialog-overlay.visible { display: flex; }
+#dialog-box {
+  background: var(--panel-bg); border: 1px solid var(--panel-border);
+  border-radius: var(--radius); padding: 24px; width: 380px; max-width: 90vw;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 16px;
+}
+#dialog-title { font-size: 16px; font-weight: bold; color: var(--accent2); }
+#dialog-msg { font-size: 14px; color: var(--text); line-height: 1.6; }
+#dialog-input {
+  width: 100%; padding: 10px 12px; border-radius: 8px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text); font-size: 14px; font-family: inherit; box-sizing: border-box; outline: none;
+}
+#dialog-input:focus { border-color: var(--accent); }
+#dialog-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-btn {
+  padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 13px; font-family: inherit; transition: all 0.2s;
+}
+.dialog-btn-primary { background: var(--accent); color: #fff; }
+.dialog-btn-primary:hover { background: var(--accent2); }
+.dialog-btn-secondary { background: rgba(255,255,255,0.08); color: var(--text); }
+.dialog-btn-secondary:hover { background: rgba(255,255,255,0.14); }
+
+/* ===== 快捷键提示 ===== */
+#shortcuts-hint {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 100; background: var(--panel-bg); border: 1px solid var(--panel-border);
+  border-radius: 20px; padding: 6px 16px; font-size: 12px; color: var(--text-dim);
+  display: none; white-space: nowrap;
+}
+#shortcuts-hint kbd {
+  background: rgba(255,255,255,0.1); border-radius: 4px; padding: 1px 5px;
+  font-family: inherit; color: var(--text); margin: 0 2px;
+}
+
+/* ===== 节点形状选择器(工具栏内) ===== */
+.shape-selector {
+  display: flex; gap: 4px; background: rgba(255,255,255,0.04);
+  border-radius: 8px; padding: 3px;
+}
+.shape-btn {
+  width: 28px; height: 28px; border-radius: 6px; border: none; cursor: pointer;
+  font-size: 14px; background: transparent; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+.shape-btn.active { background: var(--accent); color: #fff; }
+
+/* ===== 迷你地图 ===== */
+#minimap {
+  position: absolute; right: 12px; bottom: 12px; z-index: 100;
+  width: 160px; height: 120px; background: var(--panel-bg);
+  border: 1px solid var(--panel-border); border-radius: var(--radius);
+  overflow: hidden; display: none; box-shadow: var(--shadow);
+}
+#minimap.visible { display: block; }
+#minimap-canvas { width: 100%; height: 100%; }
+
+/* ===== 调试日志按钮 ===== */
+#debug-btn {
+  width: 40px; height: 40px; border-radius: 10px; border: none; cursor: pointer;
+  font-size: 18px; background: var(--panel-bg);
+  border: 1px solid var(--panel-border); color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; flex-shrink: 0;
+  margin-left: auto;   /* 靠右 */
+}
+#debug-btn:hover { border-color: var(--accent); }
+#debug-btn.active { border-color: var(--accent2); background: rgba(74,144,217,0.15); }
+
+/* ===== 空状态 ===== */
+#empty-hint {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  text-align: center; color: var(--text-dim); font-size: 14px; display: none;
+}
+#empty-hint-icon { font-size: 48px; margin-bottom: 12px; }
+
+/* ===== 词条详解 (Markdown 渲染) ===== */
+#article-content h1 { font-size: 26px; margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--panel-border); color: var(--accent2); }
+#article-content h2 { font-size: 20px; margin: 20px 0 12px; color: var(--accent); }
+#article-content h3 { font-size: 16px; margin: 16px 0 10px; color: var(--text); }
+#article-content p { margin: 10px 0; }
+#article-content ul, #article-content ol { margin: 10px 0; padding-left: 24px; }
+#article-content li { margin: 4px 0; }
+#article-content blockquote { margin: 12px 0; padding: 8px 16px; border-left: 3px solid var(--accent); background: rgba(255,255,255,0.03); border-radius: 0 8px 8px 0; color: var(--text-dim); }
+#article-content pre { background: rgba(0,0,0,0.25); padding: 12px 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 12px 0; }
+#article-content code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: "Consolas", monospace; }
+#article-content pre code { background: none; padding: 0; }
+#article-content img { max-width: 100%; border-radius: 8px; margin: 12px 0; display: block; }
+#article-content a { color: var(--accent2); text-decoration: none; }
+#article-content a:hover { text-decoration: underline; }
+#article-content hr { border: none; border-top: 1px solid var(--panel-border); margin: 20px 0; }
+#article-content table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+#article-content th, #article-content td { border: 1px solid var(--panel-border); padding: 8px 10px; text-align: left; }
+#article-content th { background: rgba(255,255,255,0.04); }
+#article-content strong { color: var(--accent2); }
+/* ===== 全局日志面板 ===== */
+#global-log-panel {
+  flex: 1; background: var(--panel-bg); border: 1px solid var(--panel-border);
+  border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column;
+  min-height: 0; font-family: "Consolas", "Microsoft YaHei", monospace; font-size: 12px;
+}
+#global-log-panel.collapsed { display: none; }
+#global-log-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.05);
+  border-bottom: 1px solid var(--panel-border);
+  color: #aaa; font-size: 12px;
+  flex-shrink: 0;
+}
+#global-log-header button {
+  background: transparent; border: none; color: #888;
+  cursor: pointer; font-size: 16px; line-height: 1;
+}
+#global-log-header button:hover { color: #fff; }
+#global-log-lines {
+  flex: 1; overflow-y: auto; padding: 6px 10px;
+}
+#global-log-lines::-webkit-scrollbar { width: 4px; }
+#global-log-lines::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+.glog-line { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+.glog-info  { color: #8be; }
+.glog-ok    { color: #8e8; }
+.glog-warn  { color: #ec8; }
+.glog-err   { color: #e88; }
+
+/* ===== 可折叠属性面板 ===== */
+#editor-panel {
+  transition: width 0.25s ease, padding 0.25s ease;
+  pointer-events: none; /* 让空白区域穿透，避免遮挡 right-panel 按钮 */
+}
+#editor-panel input,
+#editor-panel select,
+#editor-panel textarea,
+#editor-panel button {
+  pointer-events: auto;
+}
+#editor-panel.collapsed {
+  width: 32px !important;
+  padding: 8px 4px !important;
+}
+#editor-panel.collapsed #editor-panel-body,
+#editor-panel.collapsed #editor-panel-title {
+  display: none !important;
+}
+#editor-panel.collapsed #editor-panel-header {
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+#editor-panel.collapsed #editor-panel-toggle {
+  transform: rotate(180deg);
+}
+#editor-panel-body {
+  overflow-y: auto;
+  height: calc(100% - 36px);
+}
+#editor-panel-toggle:hover {
+  background: rgba(255,255,255,0.15);
+  color: var(--text);
+}
+
+/* ===== 代码编辑器分屏预览 ===== */
+#code-editor-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+#code-textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+}
+#code-preview-wrap {
+  flex: 1;
+  border-left: 1px solid var(--panel-border);
+  position: relative;
+  background: var(--bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+#code-preview-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+#code-preview-label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(26,26,46,0.85);
+  padding: 2px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 2;
+}
+#code-preview-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e88;
+  font-size: 13px;
+  padding: 20px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ===== 移动端虚拟摇杆控件 ===== */
+#mobile-controls {
+  position: fixed;
+  right: 0px;/*此处不是bug,有意为之*/
+  bottom: 0px;/*此处不是bug,有意为之*/
+  z-index: 300;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0px;/*此处不是bug,有意为之*/
+  user-select: none;
+  -webkit-user-select: none;
+}
+#mobile-controls .mc-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+#mobile-controls .mc-btn {
+  width: 0px;/*此处不是bug,有意为之*/
+  height: 0px;/*此处不是bug,有意为之*/
+  border-radius: 0px;/*此处不是bug,有意为之*/
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(30,30,50,0.25);
+  backdrop-filter: blur(4px);
+  color: rgba(255,255,255,0.35);
+  font-size: 0px;/*此处不是bug,有意为之*/
+  font-family: inherit;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, transform 0.1s, color 0.15s;
+}
+#mobile-controls .mc-btn:active {
+  background: rgba(60,60,90,0.45);
+  color: rgba(255,255,255,0.7);
+  transform: scale(0.92);
+}
+#mobile-controls .mc-btn-zoom {
+  width: 0px;/*此处不是bug,有意为之*/
+  height: 0px;/*此处不是bug,有意为之*/
+  font-size: 0px;/*此处不是bug,有意为之*/
+  font-weight: bold;  /*此处不是bug,有意为之*/
+}
+#mobile-controls .mc-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-top: 2px;
+}
+</style>
+</head>
+<body>
+
+<!-- ===== 加载页面 ===== -->
+<div id="loading-screen">
+  <div id="loading-logo">🧠</div>
+  <div id="loading-title">BrainSphere</div>
+  <div id="loading-sub">词条关系图</div>
+  <div id="loading-progress"><div id="loading-bar"></div></div>
+  <div id="loading-log"></div>
+</div>
+
+<!-- ===== 欢迎页 ===== -->
+<div id="welcome-screen">
+  <div class="welcome-title">🧠 BrainSphere</div>
+  <div class="welcome-sub">词条关系图 · 2D 可视化</div>
+  <div class="welcome-cards">
+    <div class="welcome-card" id="btn-demo">
+      <div class="welcome-card-icon">📖</div>
+      <div class="welcome-card-title">查看示例</div>
+      <div class="welcome-card-desc">六艺词条关系图演示</div>
+    </div>
+    <!-- 【修改点】毕业纪念快捷入口，如需修改目标链接请改上方 ONLINE_PROJECT_URL 变量 -->
+    <div class="welcome-card" id="btn-graduation">
+      <div class="welcome-card-icon">🎓</div>
+      <div class="welcome-card-title">毕业纪念</div>
+      <div class="welcome-card-desc">2026届一班毕业纪念册</div>
+    </div>
+    <div class="welcome-card" id="btn-open-dir">
+      <div class="welcome-card-icon">📂</div>
+      <div class="welcome-card-title">打开项目文件夹</div>
+      <div class="welcome-card-desc">选择脑图项目所在文件夹</div>
+    </div>
+    <div class="welcome-card" id="btn-input-path">
+      <div class="welcome-card-icon">⌨️</div>
+      <div class="welcome-card-title">手动输入路径</div>
+      <div class="welcome-card-desc">输入文件夹完整路径</div>
+    </div>
+  </div>
+  <div class="welcome-divider"></div>
+  <div class="welcome-recent">
+    <!--<h3>最近项目</h3>-->
+    <!--<div id="recent-list"></div>-->
+    <!--该功能异常暂停使用-->
+  </div>
+</div>
+
+<!-- ===== 主应用 ===== -->
+<div id="app">
+  <!-- 顶部栏 -->
+  <div id="topbar">
+    <button class="topbar-btn" id="btn-home" title="回到首页">🏠 首页</button>
+    <div class="topbar-sep"></div>
+    <button class="topbar-btn" id="btn-open">📂 打开</button>
+    <button class="topbar-btn" id="btn-export">📷 导出</button>
+    <div class="topbar-sep"></div>
+    <button class="topbar-btn" id="btn-edit-toggle">✏️ 编辑</button>
+    <button class="topbar-btn" id="btn-code-edit" style="display:none;">💻 代码</button>
+    <button class="topbar-btn" id="btn-save" style="display:none;">💾 保存</button>
+    <div class="topbar-sep"></div>
+    <div class="topbar-title" id="topbar-title">BrainSphere</div>
+    <div class="topbar-sep"></div>
+    <button class="topbar-btn" id="btn-theme">🌙</button>
+    <button class="topbar-btn" id="btn-settings">⚙️</button>
+    <button class="topbar-btn" id="btn-fullscreen">⛶</button>
+  </div>
+
+  <!-- 设置面板 -->
+  <div id="settings-panel">
+    <div class="settings-row">
+      <span class="settings-label">节点形状</span>
+      <div class="shape-selector">
+        <button class="shape-btn active" data-shape="circle" title="圆形">●</button>
+        <button class="shape-btn" data-shape="rounded-rect" title="圆角矩形">▢</button>
+        <button class="shape-btn" data-shape="diamond" title="菱形">◇</button>
+        <button class="shape-btn" data-shape="hexagon" title="六边形">⬡</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">连线样式</span>
+      <select id="setting-conn-style">
+        <option value="solid-arrow">直线箭头</option>
+        <option value="solid">直线</option>
+        <option value="dashed-arrow">虚线箭头</option>
+        <option value="dashed">虚线</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">切换动画</span>
+      <select id="setting-transition">
+        <option value="zoom">缩放推进</option>
+        <option value="fade">淡入淡出</option>
+        <option value="slide">滑动</option>
+        <option value="flip">翻转</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">显示连线文字</span>
+      <input type="checkbox" id="setting-show-labels" checked>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">悬停效果</span>
+      <select id="setting-repel-mode">
+        <option value="radial">径向推开</option>
+        <option value="tangential">切向甩动</option>
+        <option value="fan">扇形展开</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">主题</span>
+      <select id="setting-theme">
+        <option value="dark">暗色</option>
+        <option value="light">亮色</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 左侧工具栏 -->
+  <div id="left-toolbar">
+    <button class="tool-btn" id="btn-back" data-tip="后退 (Backspace)" disabled>⬅</button>
+    <button class="tool-btn" id="btn-forward" data-tip="前进" disabled>➡</button>
+    <button class="tool-btn" id="btn-tool-home" data-tip="回到首页 (Home)">🏠</button>
+    <div class="topbar-sep" style="width:20px;height:1px;margin:2px 0;"></div>
+    <button class="tool-btn" id="btn-reset-view" data-tip="重置视图 (R)">⟲</button>
+    <button class="tool-btn" id="btn-minimap-toggle" data-tip="迷你地图 (M)">🗺</button>
+    <button class="tool-btn" id="btn-search" data-tip="搜索 (Ctrl+F)">🔍</button>
+  </div>
+
+  <!-- 右侧历史面板 -->
+  <div id="right-panel">
+    <button id="history-toggle" title="历史记录">📜</button>
+    <button id="debug-btn" title="调试日志">🔧</button>
+    <div id="history-panel">
+      <div id="history-header">
+        <span>浏览历史</span>
+        <span id="history-count" style="font-size:11px;color:var(--text-dim)">0 条</span>
+      </div>
+      <div id="history-list"></div>
+    </div>
+    <div id="global-log-panel">
+      <div id="global-log-header">
+        <span>📋 日志</span>
+        <button id="global-log-close">×</button>
+      </div>
+      <div id="global-log-lines"></div>
+    </div>
+    <button id="mobile-toggle" title="虚拟摇杆">🎮</button>
+  </div>
+
+  <!-- 编辑器属性面板（编辑模式显示，可折叠） -->
+  <div id="editor-panel" style="display:none;position:absolute;right:12px;top:60px;bottom:12px;width:260px;z-index:100;background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:var(--radius);padding:12px;overflow:hidden;box-shadow:var(--shadow);">
+    <div id="editor-panel-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;cursor:pointer;user-select:none;">
+      <span id="editor-panel-title" style="font-size:13px;font-weight:bold;color:var(--accent2);white-space:nowrap;">🛠️ 节点属性</span>
+      <button id="editor-panel-toggle" title="折叠/展开" style="background:rgba(255,255,255,0.08);border:none;border-radius:6px;color:var(--text-dim);cursor:pointer;font-size:12px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;">◀</button>
+    </div>
+    <div id="editor-panel-body">
+      <div id="editor-no-selection" style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px 0;">单击画布上的节点以编辑</div>
+      <div id="editor-form" style="display:none;">
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">词条名称（展示用）</label>
+          <input type="text" id="edit-word" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">节点ID（内部标识，只读）</label>
+          <input type="text" id="edit-id" readonly style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.15);color:var(--text-dim);font-size:12px;box-sizing:border-box;cursor:not-allowed;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">悬浮提示内容（鼠标悬停时显示）</label>
+          <textarea id="edit-desc" rows="3" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">连线悬浮提示（关系的额外说明）</label>
+          <textarea id="edit-conn-tooltip" rows="2" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:12px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">权重 (1-100，留空自动)</label>
+          <input type="number" id="edit-weight" min="1" max="100" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">颜色</label>
+          <input type="color" id="edit-color" style="width:100%;height:32px;border:none;border-radius:6px;cursor:pointer;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">球体风格</label>
+          <select id="edit-style" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;box-sizing:border-box;">
+            <option value="glass">glass</option>
+            <option value="metal">metal</option>
+            <option value="matte">matte</option>
+            <option value="wireframe">wireframe</option>
+          </select>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">半径 (px)</label>
+          <input type="number" id="edit-radius" min="20" max="200" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">关系标签</label>
+          <input type="text" id="edit-conn-label" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">连接至已有节点（名称 + ID）</label>
+          <select id="edit-connect-existing" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);font-size:13px;box-sizing:border-box;margin-bottom:6px;">
+            <option value="">— 选择已有节点 —</option>
+          </select>
+          <button id="edit-connect-btn" class="dialog-btn dialog-btn-primary" style="width:100%;">🔗 创建连接</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:14px;">
+          <button id="edit-apply" class="dialog-btn dialog-btn-primary" style="flex:1;">应用</button>
+          <button id="edit-delete" class="dialog-btn" style="flex:1;background:rgba(232,72,72,0.2);color:#e88;">删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 代码编辑面板（带实时预览） -->
+  <div id="code-editor" style="display:none;position:absolute;inset:44px 0 0 0;z-index:200;background:var(--bg);flex-direction:column;">
+    <div style="background:var(--panel-bg);border-bottom:1px solid var(--panel-border);padding:8px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+      <button class="topbar-btn" id="btn-code-close">⬅ 返回</button>
+      <span style="font-size:14px;color:var(--text-dim);flex:1;text-align:center;">JSON 代码编辑</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);cursor:pointer;">
+        <input type="checkbox" id="code-live-preview" checked style="cursor:pointer;">
+        实时预览
+      </label>
+      <button class="topbar-btn" id="btn-code-apply">应用</button>
+      <button class="topbar-btn" id="btn-code-save" style="background:rgba(110,200,110,0.15);color:#8e8;">💾 保存</button>
+    </div>
+    <div id="code-editor-layout">
+      <textarea id="code-textarea" spellcheck="false"></textarea>
+      <div id="code-preview-wrap">
+        <div id="code-preview-label">实时预览</div>
+        <div id="code-preview-error" style="display:none;"></div>
+        <canvas id="code-preview-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 迷你地图 -->
+  <div id="minimap">
+    <canvas id="minimap-canvas"></canvas>
+  </div>
+
+  <!-- Canvas -->
+  <div id="canvas-container">
+    <canvas id="main-canvas"></canvas>
+  </div>
+
+  <!-- 词条详解视图 -->
+  <div id="article-view" style="display:none;position:absolute;inset:44px 0 0 0;z-index:90;overflow:auto;background:var(--bg);">
+    <div id="article-toolbar" style="position:sticky;top:0;z-index:10;background:var(--panel-bg);border-bottom:1px solid var(--panel-border);padding:8px 16px;display:flex;align-items:center;gap:12px;">
+      <button class="topbar-btn" id="btn-article-back">⬅ 返回</button>
+      <span style="font-size:14px;color:var(--text-dim);flex:1;text-align:center;" id="article-title"></span>
+      <button class="topbar-btn" id="btn-article-edit" style="display:inline-block;">✏️ 编辑</button>
+      <button class="topbar-btn" id="btn-article-save" style="display:none;background:rgba(110,200,110,0.2);">✅ 保存</button>
+      <button class="topbar-btn" id="btn-article-cancel" style="display:none;">❌ 取消</button>
+    </div>
+    <div id="article-content" style="max-width:720px;margin:24px auto;padding:0 20px;font-size:15px;line-height:1.8;color:var(--text);"></div>
+    <div id="article-editor" style="display:none;max-width:720px;margin:24px auto;padding:0 20px;">
+      <div style="color:var(--text-dim);font-size:12px;margin-bottom:8px;">支持 Markdown 语法（标题、列表、粗体、代码块、表格等）</div>
+      <textarea id="article-textarea" style="width:100%;min-height:400px;background:rgba(0,0,0,0.2);border:1px solid var(--panel-border);border-radius:8px;padding:16px;color:var(--text);font-size:14px;line-height:1.8;font-family:'Consolas','Microsoft YaHei',monospace;resize:vertical;box-sizing:border-box;"></textarea>
+      <div style="margin-top:12px;padding:16px;background:rgba(0,0,0,0.15);border-radius:8px;border:1px solid var(--panel-border);">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">实时预览：</div>
+        <div id="article-preview" style="font-size:14px;line-height:1.8;color:var(--text);"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 气泡提示 -->
+  <div id="tooltip">
+    <div id="tooltip-title"></div>
+    <div id="tooltip-desc"></div>
+  </div>
+
+  <!-- 搜索浮层 -->
+  <div id="search-overlay">
+    <input type="text" id="search-box" placeholder="输入关键词搜索词条..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+
+  <!-- 快捷键提示 -->
+  <div id="shortcuts-hint">
+    <kbd>Backspace</kbd> 返回 &nbsp; <kbd>Home</kbd> 首页 &nbsp; <kbd>R</kbd> 重置视图 &nbsp; <kbd>M</kbd> 地图 &nbsp; <kbd>Ctrl+F</kbd> 搜索 &nbsp; <kbd>F11</kbd> 全屏
+  </div>
+
+</div>
+
+<!-- ===== 对话框 ===== -->
+<div id="dialog-overlay">
+  <div id="dialog-box">
+    <div id="dialog-title"></div>
+    <div id="dialog-msg"></div>
+    <input type="text" id="dialog-input" style="display:none">
+    <div id="dialog-buttons"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   BrainSphere 2D 词条关系图
+   单文件，约 1800 行
+   ============================================================ */
+
+// ===== 全局日志系统（最先初始化，捕获一切错误） =====
+const _LOG_BUFFER = [];
+const _LOG_MAX = 500;
+function _logRaw(level, msg) {
+  const ts = new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  const entry = { ts, level, msg: String(msg) };
+  _LOG_BUFFER.push(entry);
+  if (_LOG_BUFFER.length > _LOG_MAX) _LOG_BUFFER.shift();
+  // 尝试输出到界面（如果 DOM 已就绪）
+  const el = document.getElementById('global-log-lines');
+  if (el) {
+    const line = document.createElement('div');
+    line.className = 'glog-line glog-' + level;
+    line.textContent = '[' + ts + '] ' + msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+}
+// 立即捕获全局错误（比 window.onerror 更早）
+window.onerror = function(msg, url, line, col, err) {
+  _logRaw('err', 'JS ERROR: ' + msg + ' @' + (url||'').split('/').pop() + ':' + line + (col?':'+col:''));
+  return false;
+};
+window.addEventListener('error', function(e) {
+  _logRaw('err', 'ERROR: ' + e.message + ' @' + (e.filename||'').split('/').pop() + ':' + e.lineno);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  _logRaw('err', 'Unhandled Promise: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
+_logRaw('info', '日志系统就绪');
+
+// ===== 在线项目配置（用户可修改）=====
+// 【修改点】如需更换默认在线项目链接，请修改下方变量值：
+// Cloudflare 部署版：ZIP 与 index.html 同域部署，避免跨域 CORS 问题
+const ONLINE_PROJECT_URL = './graduation.zip';
+
+// ===== 全局状态 =====
+const STATE = {
+  graph: {},           // pageId → PageNode (所有加载的页面)
+  focusId: '',         // 当前焦点页面ID
+  history: [],         // 浏览历史 [{pageId, viewport}]
+  historyIndex: -1,    // 历史指针
+  viewport: { x: 0, y: 0, scale: 1 }, // 当前视口偏移
+  animating: false,    // 是否正在动画
+  isDark: true,
+  shape: 'circle',
+  connStyle: 'solid-arrow',
+  transition: 'zoom',
+  showLabels: true,
+  repelMode: 'fan',  // radial | tangential | fan
+  projectPath: '',     // 当前项目路径
+  dirHandle: null,     // File System Access API handle
+  recentProjects: [],  // 最近项目列表
+  isEditing: false,    // 是否处于编辑模式
+  selectedNodeId: '',  // 编辑模式下选中的节点ID
+};
+
+// ===== 工具函数 =====
+
+function randomColor() {
+  const colors = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db', '#9b59b6', '#e91e63', '#00bcd4', '#ff5722', '#8bc34a', '#03a9f4', '#ff9800', '#cddc39', '#ffeb3b'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function log(msg, type = 'info') {
+  const el = document.getElementById('loading-log');
+  if (!el) return;
+  el.style.display = 'block';
+  const line = document.createElement('div');
+  line.className = `log-line log-${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  console.log(`[${type}]`, msg);
+}
+
+function setProgress(pct, text) {
+  const bar = document.getElementById('loading-bar');
+  const sub = document.getElementById('loading-sub');
+  if (bar) bar.style.width = pct + '%';
+  if (sub && text) sub.textContent = text;
+}
+
+function showDialog({ title, msg, input = false, inputValue = '', buttons = [] }) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('dialog-overlay');
+    const box = document.getElementById('dialog-box');
+    document.getElementById('dialog-title').textContent = title;
+    document.getElementById('dialog-msg').textContent = msg;
+    const inp = document.getElementById('dialog-input');
+    inp.style.display = input ? 'block' : 'none';
+    if (input) inp.value = inputValue || '';
+    const btnContainer = document.getElementById('dialog-buttons');
+    btnContainer.innerHTML = '';
+    buttons.forEach(b => {
+      const btn = document.createElement('button');
+      btn.className = `dialog-btn ${b.primary ? 'dialog-btn-primary' : 'dialog-btn-secondary'}`;
+      btn.textContent = b.text;
+      btn.onclick = () => {
+        overlay.classList.remove('visible');
+        // 如果带有输入框且点击的是主按钮，返回输入框内容
+        if (input && b.primary) {
+          resolve(inp.value);
+        } else {
+          resolve(b.value);
+        }
+      };
+      btnContainer.appendChild(btn);
+    });
+    overlay.classList.add('visible');
+    if (input) setTimeout(() => inp.focus(), 100);
+  });
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+}
+
+// ===== 持久化 =====
+function saveRecentProject(path) {
+  try {
+    let recent = JSON.parse(localStorage.getItem('brainsphere-recent') || '[]');
+    recent = recent.filter(p => p.path !== path);
+    recent.unshift({ path, name: path.split(/[\\/]/).pop(), timestamp: Date.now() });
+    recent = recent.slice(0, 10);
+    localStorage.setItem('brainsphere-recent', JSON.stringify(recent));
+    STATE.recentProjects = recent;
+  } catch (e) {
+    STATE.recentProjects = [];
+  }
+}
+
+function loadRecentProjects() {
+  try {
+    STATE.recentProjects = JSON.parse(localStorage.getItem('brainsphere-recent') || '[]');
+  } catch (e) {
+    STATE.recentProjects = [];
+  }
+}
+
+function renderRecentList() {
+  const list = document.getElementById('recent-list');
+  if (!list) return;
+  list.innerHTML = '';
+  STATE.recentProjects.forEach(p => {
+    const item = document.createElement('div');
+    item.className = 'recent-item';
+    item.innerHTML = `<span class="recent-item-icon">📁</span><span class="recent-item-path">${p.path}</span><span class="recent-item-del">✕</span>`;
+    item.querySelector('.recent-item-del').onclick = (e) => {
+      e.stopPropagation();
+      STATE.recentProjects = STATE.recentProjects.filter(r => r.path !== p.path);
+      try { localStorage.setItem('brainsphere-recent', JSON.stringify(STATE.recentProjects)); } catch (e) {}
+      renderRecentList();
+    };
+    item.onclick = () => loadProjectFromPath(p.path);
+    list.appendChild(item);
+  });
+}
+
+// ===== 配置合并 =====
+const DEFAULT_CONFIG = {
+  rootPageId: 'INDEX',
+  transition: 'zoom',
+  theme: 'dark',
+  defaults: {
+    mainSphere: { radius: 80, style: 'glass', color: '#4a90d9', fontSize: 22, fontColor: '#ffffff', fontFamily: 'Microsoft YaHei' },
+    childSphere: { radius: 48, style: 'metal', color: '#6ab0ff', fontSize: 14, fontColor: '#ffffff', fontFamily: 'Microsoft YaHei' },
+    connection: { style: 'solid-arrow', color: '#888888', width: 2, labelFontSize: 12, labelFontColor: '#cccccc' }
+  }
+};
+
+function deepMerge(base, override) {
+  if (!override) return base;
+  const result = { ...base };
+  for (const key of Object.keys(override)) {
+    if (override[key] !== null && typeof override[key] === 'object' && !Array.isArray(override[key])) {
+      result[key] = deepMerge(base[key] || {}, override[key]);
+    } else {
+      result[key] = override[key];
+    }
+  }
+  return result;
+}
+
+function resolveConfig(pageId, configJson) {
+  const defaults = deepMerge(DEFAULT_CONFIG, configJson);
+  const page = STATE.graph[pageId];
+  if (!page) return defaults;
+  return {
+    ...defaults,
+    mainSphere: deepMerge(defaults.defaults.mainSphere, page.sphere || {}),
+    defaults: {
+      mainSphere: defaults.defaults.mainSphere,
+      childSphere: deepMerge(defaults.defaults.childSphere, page.sphere || {}),
+      connection: defaults.defaults.connection
+    }
+  };
+}
+
+// ===== 文件加载 =====
+
+// 使用 File System Access API 读取目录
+async function loadProjectViaDirHandle(dirHandle) {
+  log('使用 File System Access API 加载...', 'info');
+  const files = [];
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+      files.push(entry.name);
+    }
+  }
+  log(`发现 ${files.length} 个 JSON 文件: ${files.join(', ')}`, 'info');
+
+  STATE.graph = {};
+  let configData = null;
+
+  for (const filename of files) {
+    const fileHandle = await dirHandle.getFileHandle(filename);
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    try {
+      const json = JSON.parse(text);
+      const id = filename.replace('.json', '');
+      json._id = id;
+      json._filename = filename;
+      STATE.graph[id] = json;
+      if (filename === 'config.json') configData = json;
+      log(`读取 ${filename} 成功`, 'ok');
+    } catch (e) {
+      log(`解析 ${filename} 失败: ${e.message}`, 'err');
+    }
+  }
+
+  return configData;
+}
+
+// 使用 fetch + file:// 协议（仅限 Chrome 带 --allow-file-access-from-files）
+async function loadProjectViaFetch(path) {
+  log(`使用 fetch 加载: ${path}`, 'info');
+  try {
+    const configUrl = `file://${path.replace(/\\/g, '/')}/config.json`;
+    log(`读取 config.json...`, 'info');
+    const resp = await fetch(configUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const configData = await resp.json();
+    log('config.json 解析成功', 'ok');
+
+    // 列举所有 json
+    const listResp = await fetch(configUrl);
+    // file:// 不支持目录列举，用固定方式
+    const ids = [];
+    if (configData.rootPageId) ids.push(configData.rootPageId);
+    if (Array.isArray(configData.defaults?.rootPages)) ids.push(...configData.defaults.rootPages);
+
+    // 从 config 里找所有可能的 id，或者扫描同目录
+    // 简单策略：从 config.rootPageId 开始找，children.targetPageId 递归
+    const discovered = new Set(['INDEX', configData.rootPageId].filter(Boolean));
+
+    async function scanChildren(pageId) {
+      if (!pageId || pageId === 'config') return;
+      const url = `file://${path.replace(/\\/g, '/')}/${pageId}.json`;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!STATE.graph[pageId]) {
+          j._id = pageId;
+          STATE.graph[pageId] = j;
+          log(`读取 ${pageId}.json 成功`, 'ok');
+        }
+        (j.children || []).forEach(c => { if (c.targetPageId) discovered.add(c.targetPageId); });
+      } catch (e) { log(`读取 ${pageId}.json 失败: ${e.message}`, 'err'); }
+    }
+
+    // 先扫描 INDEX
+    await scanChildren('INDEX');
+    if (configData.rootPageId && configData.rootPageId !== 'INDEX') await scanChildren(configData.rootPageId);
+
+    // 再从已发现的页面递归扫描
+    const queue = [...discovered];
+    while (queue.length) {
+      const next = queue.shift();
+      const before = discovered.size;
+      await scanChildren(next);
+      (STATE.graph[next]?.children || []).forEach(c => {
+        if (c.targetPageId && !discovered.has(c.targetPageId)) {
+          discovered.add(c.targetPageId);
+          queue.push(c.targetPageId);
+        }
+      });
+    }
+
+    log(`共加载 ${Object.keys(STATE.graph).length} 个页面`, 'ok');
+    return configData;
+  } catch (e) {
+    log(`fetch 加载失败: ${e.message}`, 'err');
+    return null;
+  }
+}
+
+// 【修改点】从在线 URL 加载 ZIP 项目（支持 http/https 链接）
+async function loadProjectFromURL(url) {
+  log(`从在线地址加载 ZIP: ${url}`, 'info');
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    const blob = await resp.blob();
+    const zip = await JSZip.loadAsync(blob);
+
+    const graph = {};
+    const jsonFiles = Object.keys(zip.files).filter(n => n.endsWith('.json'));
+    for (const fname of jsonFiles) {
+      const content = await zip.files[fname].async('string');
+      const pageId = fname.replace(/\.json$/, '');
+      try {
+        graph[pageId] = JSON.parse(content);
+      } catch (parseErr) {
+        log(`ZIP 中 ${fname} 解析失败: ${parseErr.message}`, 'warn');
+      }
+    }
+
+    if (Object.keys(graph).length === 0) {
+      throw new Error('ZIP 中没有找到有效的 JSON 文件');
+    }
+
+    // 合并到全局 graph
+    Object.assign(STATE.graph, graph);
+    log(`在线 ZIP 加载完成，共 ${Object.keys(graph).length} 个页面`, 'ok');
+
+    // 返回 config 数据供后续使用
+    return graph.config || null;
+  } catch (e) {
+    log(`在线加载失败: ${e.message}`, 'err');
+    return null;
+  }
+}
+
+// 主加载入口
+async function loadProject(path, dirHandle = null) {
+  log('===== 开始加载项目 =====', 'info');
+  log(`路径: ${path}`, 'info');
+  STATE.projectPath = path;
+  STATE.dirHandle = dirHandle;
+
+  setProgress(10, '加载配置...');
+
+  let configData;
+  if (dirHandle) {
+    configData = await loadProjectViaDirHandle(dirHandle);
+  } else if (/^https?:\/\//.test(path)) {
+    // 【修改点】在线 URL 路径，直接 fetch ZIP
+    configData = await loadProjectFromURL(path);
+  } else {
+    configData = await loadProjectViaFetch(path);
+  }
+
+  if (!configData && !STATE.graph['INDEX'] && !STATE.graph[Object.keys(STATE.graph)[0]]) {
+    log('加载失败：未找到有效页面', 'err');
+    await showDialog({ title: '❌ 加载失败', msg: `无法加载项目：\n${path}\n\n可能原因：\n• 浏览器安全限制，请使用 Chrome/Edge 并点击「打开项目文件夹」\n• 文件夹中没有 config.json 或 INDEX.json`, buttons: [{ text: '确定', value: null, primary: true }] });
+    return false;
+  }
+
+  // 补全：如果 graph 中没有 config
+  if (!STATE.graph['config']) {
+    STATE.graph['config'] = configData || DEFAULT_CONFIG;
+    STATE.graph['config']._id = 'config';
+  }
+
+  setProgress(60, '构建图结构...');
+  log('构建图结构完成', 'ok');
+
+  // 预加载所有子页面
+  setProgress(80, '预加载相邻页面...');
+  await preloadAllRelated();
+  setProgress(95, '初始化场景...');
+  log('预加载完成', 'ok');
+
+  // 确定入口页面
+  const rootId = configData?.rootPageId || STATE.graph['INDEX'] ? 'INDEX' : Object.keys(STATE.graph).find(id => id !== 'config');
+  log(`入口页面: ${rootId}`, 'info');
+
+  // 初始化视图
+  STATE.viewport = { x: 0, y: 0, scale: 1 };
+  STATE.history = [];
+  STATE.historyIndex = -1;
+
+  // 导航到首页
+  await navigateTo(rootId, false);
+
+  saveRecentProject(path);
+  setProgress(100, '加载完成！');
+  log('===== 项目加载完成 =====', 'ok');
+  return true;
+}
+
+async function preloadAllRelated() {
+  const allIds = new Set(Object.keys(STATE.graph).filter(id => id !== 'config'));
+  const missing = [];
+  for (const id of allIds) {
+    if (!STATE.graph[id].children) STATE.graph[id].children = [];
+    for (const child of STATE.graph[id].children || []) {
+      if (child.targetPageId && !STATE.graph[child.targetPageId]) {
+        missing.push(child.targetPageId);
+      }
+    }
+  }
+  if (missing.length === 0) return;
+  log(`预加载缺失页面: ${missing.join(', ')}`, 'info');
+  for (const mid of missing) {
+    try {
+      let text;
+      if (STATE.dirHandle) {
+        const handle = await STATE.dirHandle.getFileHandle(`${mid}.json`);
+        const file = await handle.getFile();
+        text = await file.text();
+      } else {
+        const url = `file://${STATE.projectPath.replace(/\\/g, '/')}/${mid}.json`;
+        const r = await fetch(url);
+        if (!r.ok) continue;
+        text = await r.text();
+      }
+      const json = JSON.parse(text);
+      json._id = mid;
+      STATE.graph[mid] = json;
+      log(`预加载 ${mid}.json 成功`, 'ok');
+    } catch (e) { log(`预加载 ${mid}.json 失败: ${e.message}`, 'err'); }
+  }
+}
+
+async function loadProjectFromPath(path) {
+  hideWelcome();
+  showLoading();
+  await loadProject(path, null);
+  showApp();
+}
+
+// ===== 欢迎页 =====
+
+function showWelcome() {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('welcome-screen').style.display = 'flex';
+  loadRecentProjects();
+  renderRecentList();
+}
+
+function hideWelcome() {
+  document.getElementById('welcome-screen').style.display = 'none';
+}
+
+function showLoading() {
+  document.getElementById('loading-screen').style.display = 'flex';
+  document.getElementById('loading-log').style.display = 'none';
+  document.getElementById('loading-bar').style.width = '0%';
+  document.getElementById('loading-sub').textContent = '加载中...';
+  document.getElementById('loading-log').innerHTML = '';
+}
+
+function showApp() {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('welcome-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+}
+
+// ===== 节点布局算法 =====
+
+// 计算所有相关节点的位置
+// focusId 在中心，其他节点按权重环形分布
+function computeLayout(focusId) {
+  const page = STATE.graph[focusId];
+  if (!page) return [];
+
+  const children = page.children || [];
+  const nodes = [];
+
+  // 焦点节点在中心
+  const mainRadius = resolveConfig(focusId, STATE.graph['config']).mainSphere;
+  nodes.push({
+    id: focusId,
+    word: page.word || focusId,
+    description: page.description || '',
+    x: 0, y: 0,
+    radius: mainRadius.radius,
+    style: mainRadius.style,
+    color: mainRadius.color,
+    fontSize: mainRadius.fontSize,
+    fontColor: mainRadius.fontColor,
+    isMain: true
+  });
+
+  // 按权重排序
+  const sorted = [...children].sort((a, b) => (a.weight || 0) - (b.weight || 0));
+
+  // 计算层数和每层数量
+  const n = sorted.length;
+  let layers = [];
+  let remaining = n;
+  let layerSize = 6;
+  while (remaining > 0) {
+    const count = Math.min(remaining, layerSize);
+    layers.push({ size: count, radius: 0 });
+    remaining -= count;
+    if (layerSize === 6) layerSize = 12;
+    else if (layerSize === 12) layerSize = 18;
+    else layerSize += 18;
+  }
+
+  // 计算每层的实际半径（像素）
+  // 连线长度约为主球直径，留出足够空间
+  const baseDist = mainRadius.radius * 2.2 + 40;
+  let layerIdx = 0;
+  let globalIdx = 0;
+  const totalLayers = layers.length;
+
+  for (const layer of layers) {
+    const dist = baseDist + layerIdx * 110;
+    layer.radius = dist;
+    layer.startAngle = globalIdx === 0 ? 0 : (2 * Math.PI / totalLayers) * layerIdx;
+    globalIdx += layer.size;
+    layerIdx++;
+  }
+
+  // 分配位置
+  globalIdx = 0;
+  for (const child of sorted) {
+    // 找到所属层
+    let layerAccum = 0;
+    let targetLayer = layers[0];
+    for (const l of layers) {
+      if (globalIdx < layerAccum + l.size) { targetLayer = l; break; }
+      layerAccum += l.size;
+    }
+    const posInLayer = globalIdx - (layerAccum);
+    const layerStart = layers.indexOf(targetLayer) === 0 ? -Math.PI / 2 : (2 * Math.PI / totalLayers) * layers.indexOf(targetLayer);
+    const totalLayerCount = layers.reduce((s, l) => s + l.size, 0);
+    const angleStep = (2 * Math.PI) / targetLayer.size;
+    const angle = layerStart + posInLayer * angleStep;
+
+    const childPage = STATE.graph[child.targetPageId];
+    const childCfg = resolveConfig(focusId, STATE.graph['config']).defaults.childSphere;
+    const childStyle = deepMerge(childCfg, child.sphere || {});
+
+    nodes.push({
+      id: child.targetPageId,
+      word: child.word || child.targetPageId,
+      description: child.description || childPage?.description || '',
+      x: Math.cos(angle) * targetLayer.radius,
+      y: Math.sin(angle) * targetLayer.radius,
+      radius: childStyle.radius,
+      style: childStyle.style,
+      color: childStyle.color,
+      fontSize: childStyle.fontSize,
+      fontColor: childStyle.fontColor,
+      isMain: false,
+      connectionLabel: child.connection?.label || '',
+      connectionStyle: child.connection?.style || STATE.graph['config']?.defaults?.connection?.style || 'solid-arrow',
+      connectionColor: child.connection?.color || STATE.graph['config']?.defaults?.connection?.color || '#888888'
+    });
+
+    globalIdx++;
+  }
+
+  return nodes;
+}
+
+// ===== Canvas 渲染 =====
+
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d');
+let allNodes = [];      // 当前所有可见节点
+let animFrame = null;
+let hoverNode = null;
+let hoverConnection = null; // { from, to, label, description }
+let isDragging = false;
+let lastMouse = { x: 0, y: 0 };
+let dragLineFrom = null;    // 编辑模式拖拽连线起始节点
+let dragLineCurrent = null; // 拖拽连线当前鼠标位置（世界坐标）
+let dragStartPos = null;    // 拖拽起始位置（用于区分单击和拖拽）
+
+// 悬停排斥动画状态：id -> { ox, oy, scale, targetOx, targetOy, targetScale }
+const nodeAnimStates = new Map();
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  render();
+}
+
+function render() {
+  if (!animFrame) animFrame = requestAnimationFrame(doRender);
+}
+
+function doRender() {
+  animFrame = null;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+
+  // 应用视口变换
+  const v = STATE.viewport;
+  ctx.translate(canvas.width / 2 + v.x, canvas.height / 2 + v.y);
+  ctx.scale(v.scale, v.scale);
+
+  // 悬停排斥动画插值
+  let needsAnotherFrame = isDragging;
+  if (hoverNode) {
+    for (const node of allNodes) {
+      const st = nodeAnimStates.get(node.id) || { ox: 0, oy: 0, scale: 1, targetOx: 0, targetOy: 0, targetScale: 1 };
+      const speed = 0.12;
+      const dx = st.targetOx - st.ox;
+      const dy = st.targetOy - st.oy;
+      const ds = st.targetScale - st.scale;
+      st.ox += dx * speed;
+      st.oy += dy * speed;
+      st.scale += ds * speed;
+      nodeAnimStates.set(node.id, st);
+      if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3 || Math.abs(ds) > 0.005) {
+        needsAnotherFrame = true;
+      }
+    }
+  } else {
+    // 无悬停时，所有节点回归原位
+    for (const node of allNodes) {
+      const st = nodeAnimStates.get(node.id);
+      if (!st) continue;
+      const speed = 0.1;
+      const dx = -st.ox;
+      const dy = -st.oy;
+      const ds = 1 - st.scale;
+      st.ox += dx * speed;
+      st.oy += dy * speed;
+      st.scale += ds * speed;
+      if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3 || Math.abs(ds) > 0.005) {
+        needsAnotherFrame = true;
+      }
+    }
+  }
+
+  // 绘制
+  drawConnections();
+  drawNodes();
+
+  // 编辑模式拖拽连线临时绘制
+  if (dragLineFrom && dragLineCurrent) {
+    const p1 = getNodeRenderPos(dragLineFrom);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(dragLineCurrent.x, dragLineCurrent.y);
+    ctx.strokeStyle = '#ff6b6b';
+    ctx.lineWidth = 2 / STATE.viewport.scale;
+    ctx.setLineDash([5 / STATE.viewport.scale, 3 / STATE.viewport.scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 箭头
+    const angle = Math.atan2(dragLineCurrent.y - p1.y, dragLineCurrent.x - p1.x);
+    drawArrowHead(dragLineCurrent.x, dragLineCurrent.y, angle, 10 / STATE.viewport.scale, '#ff6b6b');
+  }
+
+  ctx.restore();
+
+  if (needsAnotherFrame && !animFrame) {
+    animFrame = requestAnimationFrame(doRender);
+  }
+}
+
+function drawConnections() {
+  const mainNode = allNodes.find(n => n.isMain);
+  if (!mainNode) return;
+
+  for (const node of allNodes) {
+    if (node.isMain) continue;
+    const connStyle = node.connectionStyle || STATE.connStyle;
+    drawConnection(mainNode, node, connStyle, node.connectionColor || '#888888', node.connectionLabel);
+  }
+}
+
+// 获取节点当前绘制位置（含动画偏移）
+function getNodeRenderPos(node) {
+  const st = nodeAnimStates.get(node.id);
+  return {
+    x: node.x + (st ? st.ox : 0),
+    y: node.y + (st ? st.oy : 0)
+  };
+}
+
+function drawConnection(from, to, style, color, label) {
+  const p1 = getNodeRenderPos(from);
+  const p2 = getNodeRenderPos(to);
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const startR = from.radius + 4;
+  const endR = to.radius - 4;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2 / STATE.viewport.scale;
+
+  const sx = x1 + Math.cos(angle) * startR;
+  const sy = y1 + Math.sin(angle) * startR;
+  const ex = x2 - Math.cos(angle) * endR;
+  const ey = y2 - Math.sin(angle) * endR;
+
+  if (style === 'solid' || style === 'solid-arrow') {
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    if (style === 'solid-arrow') {
+      drawArrowHead(ex, ey, angle, 10 / STATE.viewport.scale, color);
+    }
+  } else {
+    // 虚线
+    ctx.setLineDash([6 / STATE.viewport.scale, 4 / STATE.viewport.scale]);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (style === 'dashed-arrow') {
+      drawArrowHead(ex, ey, angle, 10 / STATE.viewport.scale, color);
+    }
+  }
+
+  // 绘制连线标签（字体自适应：基于两端球体较小半径）
+  if (label && STATE.showLabels) {
+    const mx = (sx + ex) / 2;
+    const my = (sy + ey) / 2;
+    ctx.save();
+    const minRadius = Math.min(from.radius, to.radius);
+    const labelFontSize = Math.max(9, Math.min(14, minRadius * 0.35)) / STATE.viewport.scale;
+    ctx.font = `${labelFontSize}px "Microsoft YaHei", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const metrics = ctx.measureText(label);
+    const pad = 4 / STATE.viewport.scale;
+    const boxH = labelFontSize + pad * 2;
+    ctx.fillStyle = 'rgba(26,26,46,0.85)';
+    ctx.fillRect(mx - metrics.width / 2 - pad, my - boxH / 2, metrics.width + pad * 2, boxH);
+    ctx.fillStyle = '#cccccc';
+    ctx.fillText(label, mx, my);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawArrowHead(x, y, angle, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-size, -size / 2);
+  ctx.lineTo(-size, size / 2);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawNodes() {
+  for (const node of allNodes) {
+    drawNode(node);
+  }
+}
+
+function drawNode(node) {
+  ctx.save();
+
+  const st = nodeAnimStates.get(node.id);
+  const ox = st ? st.ox : 0;
+  const oy = st ? st.oy : 0;
+  ctx.translate(node.x + ox, node.y + oy);
+
+  const scale = STATE.viewport.scale;
+  const displayR = node.radius;
+
+  // 悬停放大（使用动画状态插值）
+  const isHovered = hoverNode && hoverNode.id === node.id;
+  const animScale = st ? st.scale : 1;
+  const r = displayR * (isHovered ? 1.3 : animScale);
+
+  // 根据形状绘制
+  if (STATE.shape === 'circle' || node.isMain) {
+    drawCircleNode(node, r, scale, isHovered);
+  } else if (STATE.shape === 'rounded-rect') {
+    drawRoundedRectNode(node, r, scale, isHovered);
+  } else if (STATE.shape === 'diamond') {
+    drawDiamondNode(node, r, scale, isHovered);
+  } else if (STATE.shape === 'hexagon') {
+    drawHexagonNode(node, r, scale, isHovered);
+  }
+
+  // 编辑模式选中高亮
+  if (STATE.isEditing && STATE.selectedNodeId === node.id) {
+    ctx.strokeStyle = '#ff6b6b';
+    ctx.lineWidth = 3 / scale;
+    ctx.setLineDash([4 / scale, 3 / scale]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // 文字（始终不旋转）
+  drawNodeLabel(node, r, scale, isHovered);
+
+  ctx.restore();
+}
+
+function drawCircleNode(node, r, scale, isHovered) {
+  const style = node.style || 'glass';
+
+  // 安全检查
+  if (!r || r <= 0 || !isFinite(r)) r = 10;
+  if (!scale || scale <= 0 || !isFinite(scale)) scale = 1;
+
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.closePath();
+
+  if (style === 'glass') {
+    // 多层径向渐变模拟玻璃球体
+    const innerR = Math.max(0.5, r * 0.05);
+    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.35, innerR, 0, 0, r);
+    g.addColorStop(0, lighten(node.color, 0.55));
+    g.addColorStop(0.35, lighten(node.color, 0.2));
+    g.addColorStop(0.7, node.color);
+    g.addColorStop(1, darken(node.color, 0.35));
+    ctx.fillStyle = g;
+    ctx.fill();
+    // 外发光描边
+    ctx.strokeStyle = isHovered ? lighten(node.color, 0.4) : lighten(node.color, 0.15);
+    ctx.lineWidth = isHovered ? 3.5 / scale : 2 / scale;
+    ctx.stroke();
+    // 主高光（左上）
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.3, -r * 0.32, r * 0.22, r * 0.14, Math.PI / 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fill();
+    // 次高光（右下微亮）
+    ctx.beginPath();
+    ctx.arc(r * 0.35, r * 0.38, r * 0.12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fill();
+  } else if (style === 'matte') {
+    // 磨砂球体：柔和的径向渐变
+    const g = ctx.createRadialGradient(-r * 0.25, -r * 0.25, r * 0.1, 0, 0, r);
+    g.addColorStop(0, lighten(node.color, 0.25));
+    g.addColorStop(0.6, node.color);
+    g.addColorStop(1, darken(node.color, 0.25));
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = darken(node.color, 0.15);
+    ctx.lineWidth = isHovered ? 3 / scale : 2 / scale;
+    ctx.stroke();
+    // 微弱高光
+    ctx.beginPath();
+    ctx.arc(-r * 0.2, -r * 0.25, r * 0.18, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fill();
+  } else if (style === 'wireframe') {
+    ctx.strokeStyle = node.color;
+    ctx.lineWidth = isHovered ? 2 / scale : 1.5 / scale;
+    ctx.stroke();
+    // 网格
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.strokeStyle = adjustAlpha(node.color, 0.3);
+    ctx.stroke();
+    // 中心微弱填充增加球体感
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    g.addColorStop(0, adjustAlpha(node.color, 0.15));
+    g.addColorStop(1, adjustAlpha(node.color, 0.02));
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = g;
+    ctx.fill();
+  } else if (style === 'metal') {
+    // 金属球体：对角线渐变 + 径向叠加
+    const g = ctx.createLinearGradient(-r, -r, r, r);
+    g.addColorStop(0, lighten(node.color, 0.55));
+    g.addColorStop(0.35, node.color);
+    g.addColorStop(0.65, darken(node.color, 0.15));
+    g.addColorStop(1, darken(node.color, 0.45));
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = lighten(node.color, 0.25);
+    ctx.lineWidth = isHovered ? 3 / scale : 2 / scale;
+    ctx.stroke();
+    // 金属高光
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.3, -r * 0.3, r * 0.25, r * 0.1, Math.PI / 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fill();
+    // 环境反射
+    ctx.beginPath();
+    ctx.arc(r * 0.3, r * 0.35, r * 0.1, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fill();
+  }
+}
+
+function drawRoundedRectNode(node, r, scale, isHovered) {
+  const w = r * 2, h = r * 1.6, corner = r * 0.3;
+  ctx.beginPath();
+  roundRect(ctx, -w/2, -h/2, w, h, corner);
+  // 径向渐变模拟球体感
+  const g = ctx.createRadialGradient(-w*0.15, -h*0.15, w*0.05, 0, 0, Math.max(w,h)*0.6);
+  g.addColorStop(0, lighten(node.color, 0.35));
+  g.addColorStop(0.55, node.color);
+  g.addColorStop(1, darken(node.color, 0.3));
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = isHovered ? lighten(node.color, 0.4) : lighten(node.color, 0.1);
+  ctx.lineWidth = isHovered ? 2.5 / scale : 1.5 / scale;
+  ctx.stroke();
+  // 高光
+  ctx.beginPath();
+  roundRect(ctx, -w*0.35, -h*0.3, w*0.35, h*0.25, corner*0.5);
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fill();
+}
+
+function drawDiamondNode(node, r, scale, isHovered) {
+  ctx.beginPath();
+  ctx.moveTo(0, -r);
+  ctx.lineTo(r * 0.8, 0);
+  ctx.lineTo(0, r);
+  ctx.lineTo(-r * 0.8, 0);
+  ctx.closePath();
+  const g = ctx.createRadialGradient(-r*0.2, -r*0.2, r*0.05, 0, 0, r);
+  g.addColorStop(0, lighten(node.color, 0.35));
+  g.addColorStop(0.6, node.color);
+  g.addColorStop(1, darken(node.color, 0.3));
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = isHovered ? lighten(node.color, 0.4) : lighten(node.color, 0.1);
+  ctx.lineWidth = isHovered ? 2.5 / scale : 1.5 / scale;
+  ctx.stroke();
+  // 高光
+  ctx.beginPath();
+  ctx.ellipse(-r*0.15, -r*0.2, r*0.15, r*0.08, Math.PI/4, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fill();
+}
+
+function drawHexagonNode(node, r, scale, isHovered) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+    const px = Math.cos(a) * r, py = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  const g = ctx.createRadialGradient(-r*0.25, -r*0.25, r*0.1, 0, 0, r);
+  g.addColorStop(0, lighten(node.color, 0.35));
+  g.addColorStop(0.6, node.color);
+  g.addColorStop(1, darken(node.color, 0.3));
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = isHovered ? lighten(node.color, 0.4) : lighten(node.color, 0.1);
+  ctx.lineWidth = isHovered ? 2.5 / scale : 1.5 / scale;
+  ctx.stroke();
+  // 高光
+  ctx.beginPath();
+  ctx.arc(-r*0.15, -r*0.2, r*0.18, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.fill();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawNodeLabel(node, r, scale, isHovered) {
+  // 字体自适应：根据球半径计算，确保不超过球的 40%，同时不小于 8px
+  const fontSizeByRadius = node.radius * 0.4;
+  const baseFontSize = node.fontSize || fontSizeByRadius;
+  const adaptiveFontSize = Math.max(8, Math.min(baseFontSize, fontSizeByRadius));
+  const fontSize = (isHovered ? adaptiveFontSize * 1.15 : adaptiveFontSize) / scale;
+  ctx.font = `bold ${fontSize}px "${node.fontFamily || 'Microsoft YaHei'}", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = node.fontColor || '#ffffff';
+
+  // 文字环绕（maxWidth 不超过球直径的 90%）
+  const maxWidth = (r * 2) * 0.9;
+  const words = (node.word || '').split('');
+  let line = '', lineY = 0;
+  const lineHeight = fontSize * 1.3;
+
+  for (const char of words) {
+    const test = line + char;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, 0, lineY);
+      line = char;
+      lineY += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  if (line) ctx.fillText(line, 0, lineY);
+
+  // 如果文字总高度超过球的直径，整体缩小字体重新绘制（兜底）
+  const totalH = lineY + lineHeight;
+  const maxH = (r * 2) * 0.85;
+  if (totalH > maxH && words.length > 0) {
+    ctx.save();
+    const shrink = maxH / totalH;
+    ctx.scale(shrink, shrink);
+    // 重新绘制（简化：只绘制第一行）
+    const shortText = words.slice(0, Math.floor(maxWidth / (fontSize * 0.8))).join('');
+    ctx.fillText(shortText, 0, 0);
+    ctx.restore();
+  }
+}
+
+// 将任意颜色格式解析为 {r,g,b}
+function parseColor(color) {
+  if (!color || typeof color !== 'string') return { r: 128, g: 128, b: 128 };
+  color = color.trim();
+  // #RGB
+  if (color.length === 4 && color[0] === '#') {
+    const r = parseInt(color[1] + color[1], 16);
+    const g = parseInt(color[2] + color[2], 16);
+    const b = parseInt(color[3] + color[3], 16);
+    return { r, g, b };
+  }
+  // #RRGGBB
+  if (color.length === 7 && color[0] === '#') {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return { r: 128, g: 128, b: 128 };
+    return { r, g, b };
+  }
+  // rgb(r,g,b) 或 rgba(r,g,b,a)
+  const rgbMatch = color.match(/rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbMatch) {
+    return { r: parseInt(rgbMatch[1]), g: parseInt(rgbMatch[2]), b: parseInt(rgbMatch[3]) };
+  }
+  // 兜底：灰色
+  return { r: 128, g: 128, b: 128 };
+}
+
+function lighten(color, amount) {
+  const { r, g, b } = parseColor(color);
+  const clamp = v => Math.min(255, Math.round(v + (255 - v) * amount));
+  return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+}
+function darken(color, amount) {
+  const { r, g, b } = parseColor(color);
+  const clamp = v => Math.max(0, Math.round(v * (1 - amount)));
+  return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+}
+function adjustAlpha(color, alpha) {
+  const { r, g, b } = parseColor(color);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ===== 交互 =====
+
+function screenToWorld(sx, sy) {
+  const v = STATE.viewport;
+  return {
+    x: (sx - canvas.width / 2 - v.x) / v.scale,
+    y: (sy - canvas.height / 2 - v.y) / v.scale
+  };
+}
+
+function findNodeAt(worldX, worldY) {
+  for (const node of allNodes) {
+    const st = nodeAnimStates.get(node.id);
+    const nx = node.x + (st ? st.ox : 0);
+    const ny = node.y + (st ? st.oy : 0);
+    const dx = worldX - nx;
+    const dy = worldY - ny;
+    const hitR = node.isMain ? node.radius : node.radius * 1.3; // 点击热区
+    if (dx * dx + dy * dy <= hitR * hitR) return node;
+  }
+  return null;
+}
+
+// 点到线段距离
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  let t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+  const projX = x1 + t * dx, projY = y1 + t * dy;
+  return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+}
+
+// 检测鼠标是否悬停在连线上（含标签区域）
+function findConnectionAt(worldX, worldY) {
+  const mainNode = allNodes.find(n => n.isMain);
+  if (!mainNode) return null;
+
+  for (const node of allNodes) {
+    if (node.isMain) continue;
+    const label = node.connectionLabel;
+    const desc = node.description || '';
+    // 如果没有标签也没有描述，跳过
+    if (!label && !desc) continue;
+
+    const p1 = getNodeRenderPos(mainNode);
+    const p2 = getNodeRenderPos(node);
+    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const startR = mainNode.radius + 4;
+    const endR = node.radius - 4;
+    const sx = p1.x + Math.cos(angle) * startR;
+    const sy = p1.y + Math.sin(angle) * startR;
+    const ex = p2.x - Math.cos(angle) * endR;
+    const ey = p2.y - Math.sin(angle) * endR;
+
+    // 检测连线本体（命中区约 10px）
+    const lineDist = distToSegment(worldX, worldY, sx, sy, ex, ey);
+    if (lineDist <= 10 / STATE.viewport.scale) {
+      return { from: mainNode, to: node, label, description: desc };
+    }
+
+    // 检测标签矩形区域（仅当存在标签时）
+    if (label) {
+      const mx = (sx + ex) / 2;
+      const my = (sy + ey) / 2;
+      const approxWidth = label.length * 13;
+      const pad = 6 / STATE.viewport.scale;
+      const halfW = approxWidth / 2 + pad;
+      const halfH = 10 + pad;
+      if (worldX >= mx - halfW && worldX <= mx + halfW && worldY >= my - halfH && worldY <= my + halfH) {
+        return { from: mainNode, to: node, label, description: desc };
+      }
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const world = screenToWorld(sx, sy);
+  const node = findNodeAt(world.x, world.y);
+
+  if (node && node.id !== hoverNode?.id) {
+    // 悬停在节点上
+    hoverNode = node;
+    hoverConnection = null;
+    canvas.style.cursor = 'pointer';
+    showTooltip(node, e.clientX, e.clientY);
+    updateHoverTargets();
+    render();
+  } else if (!node) {
+    // 没有悬停在节点上，检查连线
+    if (hoverNode) { hoverNode = null; hideTooltip(); render(); }
+    const conn = findConnectionAt(world.x, world.y);
+    if (conn) {
+      if (!hoverConnection || hoverConnection.to.id !== conn.to.id) {
+        hoverConnection = conn;
+        canvas.style.cursor = 'pointer';
+        showConnectionTooltip(conn, e.clientX, e.clientY);
+      }
+    } else if (hoverConnection) {
+      hoverConnection = null;
+      hideTooltip();
+    }
+    if (!hoverConnection) {
+      canvas.style.cursor = isDragging ? 'grabbing' : 'grab';
+    }
+  }
+
+  // 持续更新排斥目标
+  if (hoverNode && !isDragging) {
+    updateHoverTargets();
+    render();
+  }
+
+  // tooltip 跟随鼠标
+  if (hoverNode || hoverConnection) {
+    positionTooltip(e.clientX, e.clientY);
+  }
+
+  if (isDragging) {
+    const dx = sx - lastMouse.x;
+    const dy = sy - lastMouse.y;
+    STATE.viewport.x += dx;
+    STATE.viewport.y += dy;
+    lastMouse = { x: sx, y: sy };
+    render();
+  }
+
+  // 编辑模式拖拽连线
+  if (dragLineFrom) {
+    dragLineCurrent = { x: world.x, y: world.y };
+    canvas.style.cursor = 'crosshair';
+    render();
+  }
+});
+
+// 计算悬停排斥目标状态（N-body 物理模拟，支持三种模式）
+function updateHoverTargets() {
+  if (!hoverNode) return;
+  const hoverR = hoverNode.radius * 1.3;
+  const mode = STATE.repelMode || 'fan';
+  const maxOffset = 220; // 最大偏移限制（增大以支持更强的排斥）
+
+  // 根据节点数量动态调整力度：节点越多，单个节点需要的排斥力越大才能被感知
+  const nodeCount = allNodes.length;
+  const forceMultiplier = Math.min(2.5, 0.8 + nodeCount * 0.15); // 1个节点=0.95, 6个=1.7, 10个=2.3
+
+  // 初始化所有节点状态
+  for (const node of allNodes) {
+    let st = nodeAnimStates.get(node.id);
+    if (!st) {
+      st = { ox: 0, oy: 0, scale: 1, targetOx: 0, targetOy: 0, targetScale: 1 };
+      nodeAnimStates.set(node.id, st);
+    }
+    if (node.id === hoverNode.id) {
+      st.targetScale = 1.35;
+      st.targetOx = 0;
+      st.targetOy = 0;
+    } else {
+      st.targetScale = 0.88;
+      st.targetOx = 0;
+      st.targetOy = 0;
+    }
+  }
+
+  // N-body 成对斥力计算（所有节点对之间）
+  for (let i = 0; i < allNodes.length; i++) {
+    for (let j = i + 1; j < allNodes.length; j++) {
+      const a = allNodes[i], b = allNodes[j];
+      if (a.id === hoverNode.id && b.id === hoverNode.id) continue;
+
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      const hasHover = (a.id === hoverNode.id || b.id === hoverNode.id);
+      const minDist = hasHover
+        ? hoverR + (a.id === hoverNode.id ? b.radius : a.radius) + 100
+        : a.radius + b.radius + 50;
+
+      if (dist < minDist && dist > 1) {
+        const strength = (minDist - dist) / minDist;
+        const baseForce = (hasHover ? 120 : 45) * forceMultiplier; // 力度随节点数增加
+
+        let fx = 0, fy = 0;
+        const nx = dx / dist, ny = dy / dist;
+
+        if (mode === 'radial') {
+          fx = nx * strength * baseForce;
+          fy = ny * strength * baseForce;
+        } else if (mode === 'tangential') {
+          const radialF = strength * baseForce * 0.6;
+          const tangentF = strength * baseForce * 0.55;
+          const dir = ((a.x + b.x) / 2 > hoverNode.x) ? 1 : -1;
+          fx = nx * radialF + (-ny) * tangentF * dir;
+          fy = ny * radialF + nx * tangentF * dir;
+        } else if (mode === 'fan') {
+          // 扇形展开：更强的切向力，让节点呈扇面排开
+          const radialF = strength * baseForce * 0.3;
+          const tangentF = strength * baseForce * 1.1;
+          // 根据相对于 hoverNode 的角度决定展开方向
+          const midAngle = Math.atan2((a.y + b.y) / 2 - hoverNode.y, (a.x + b.x) / 2 - hoverNode.x);
+          const dir = Math.sin(midAngle) > 0 ? 1 : -1;
+          fx = nx * radialF + (-ny) * tangentF * dir;
+          fy = ny * radialF + nx * tangentF * dir;
+        }
+
+        if (a.id !== hoverNode.id) {
+          const stA = nodeAnimStates.get(a.id);
+          stA.targetOx -= fx;
+          stA.targetOy -= fy;
+        }
+        if (b.id !== hoverNode.id) {
+          const stB = nodeAnimStates.get(b.id);
+          stB.targetOx += fx;
+          stB.targetOy += fy;
+        }
+      }
+    }
+  }
+
+  // 限制最大偏移，避免节点飞太远
+  for (const node of allNodes) {
+    if (node.id === hoverNode.id) continue;
+    const st = nodeAnimStates.get(node.id);
+    const len = Math.sqrt(st.targetOx * st.targetOx + st.targetOy * st.targetOy);
+    if (len > maxOffset) {
+      st.targetOx = (st.targetOx / len) * maxOffset;
+      st.targetOy = (st.targetOy / len) * maxOffset;
+    }
+  }
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const world = screenToWorld(sx, sy);
+  const node = findNodeAt(world.x, world.y);
+
+  if (STATE.isEditing && node) {
+    // 编辑模式：点击节点开始拖拽连线（同时记录起始位置用于区分单击）
+    dragLineFrom = node;
+    dragLineCurrent = { x: world.x, y: world.y };
+    dragStartPos = { x: world.x, y: world.y };
+    return;
+  }
+
+  if (!node) {
+    isDragging = true;
+    lastMouse = { x: sx, y: sy };
+    canvas.style.cursor = 'grabbing';
+  }
+});
+
+canvas.addEventListener('mouseup', async (e) => {
+  if (e.button !== 0) return;
+  const wasDraggingCanvas = isDragging;
+  isDragging = false;
+  canvas.style.cursor = 'grab';
+
+  const rect = canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const world = screenToWorld(sx, sy);
+  const node = findNodeAt(world.x, world.y);
+
+  // 处理拖拽连线 / 单击选中
+  if (dragLineFrom) {
+    const dx = world.x - (dragStartPos ? dragStartPos.x : dragLineFrom.x);
+    const dy = world.y - (dragStartPos ? dragStartPos.y : dragLineFrom.y);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // 如果移动距离很小（< 8px），视为单击选中
+    if (dist < 8 && STATE.isEditing && node && node.id === dragLineFrom.id) {
+      selectNode(node.id);
+    } else if (node && node.id !== dragLineFrom.id) {
+      createConnection(dragLineFrom.id, node.id);
+    }
+    dragLineFrom = null;
+    dragLineCurrent = null;
+    dragStartPos = null;
+    render();
+    return;
+  }
+
+  if (wasDraggingCanvas) return;
+
+  if (STATE.isEditing) {
+    // 编辑模式：单击选中节点
+    if (node) {
+      selectNode(node.id);
+    } else {
+      STATE.selectedNodeId = '';
+      updateEditorPanel();
+      render();
+    }
+    return;
+  }
+
+  if (node && !node.isMain) {
+    // 点击子节点 → 导航
+    await navigateTo(node.id, true);
+    return;
+  }
+
+  // 点击连线 → 导航到目标节点
+  const conn = findConnectionAt(world.x, world.y);
+  if (conn && conn.to) {
+    await navigateTo(conn.to.id, true);
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoverNode = null;
+  hoverConnection = null;
+  hideTooltip();
+  canvas.style.cursor = 'grab';
+  render();
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  STATE.viewport.scale = Math.max(0.15, Math.min(4, STATE.viewport.scale * factor));
+  render();
+}, { passive: false });
+
+// ===== 触控事件（移动端双指缩放 + 单指平移）=====
+let touchState = { mode: 'none', startDist: 0, startScale: 1, lastCenter: null };
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    // 单指：画布拖拽或节点点击
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const sx = t.clientX - rect.left, sy = t.clientY - rect.top;
+    const world = screenToWorld(sx, sy);
+    const node = findNodeAt(world.x, world.y);
+    touchState = { mode: 'pan', startX: sx, startY: sy, startWorld: world, node: node };
+    if (!node) {
+      isDragging = true;
+      lastMouse = { x: sx, y: sy };
+    } else {
+      // 悬停效果
+      hoverNode = node;
+      updateHoverTargets();
+      render();
+    }
+  } else if (e.touches.length === 2) {
+    // 双指：开始 pinch zoom
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const rect = canvas.getBoundingClientRect();
+    const x0 = t0.clientX - rect.left, y0 = t0.clientY - rect.top;
+    const x1 = t1.clientX - rect.left, y1 = t1.clientY - rect.top;
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    touchState = {
+      mode: 'pinch',
+      startDist: dist,
+      startScale: STATE.viewport.scale,
+      lastCenter: { x: cx, y: cy }
+    };
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  if (e.touches.length === 1 && touchState.mode === 'pan') {
+    const t = e.touches[0];
+    const sx = t.clientX - rect.left, sy = t.clientY - rect.top;
+    const world = screenToWorld(sx, sy);
+    // 持续更新悬停排斥
+    if (hoverNode && !isDragging) {
+      updateHoverTargets();
+    }
+    // tooltip 跟随
+    if (hoverNode) {
+      positionTooltip(t.clientX, t.clientY);
+    }
+    if (isDragging) {
+      const dx = sx - lastMouse.x;
+      const dy = sy - lastMouse.y;
+      STATE.viewport.x += dx;
+      STATE.viewport.y += dy;
+      lastMouse = { x: sx, y: sy };
+      render();
+    }
+  } else if (e.touches.length === 2 && touchState.mode === 'pinch') {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const x0 = t0.clientX - rect.left, y0 = t0.clientY - rect.top;
+    const x1 = t1.clientX - rect.left, y1 = t1.clientY - rect.top;
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    // 计算缩放比例
+    const scaleFactor = dist / touchState.startDist;
+    const newScale = Math.max(0.15, Math.min(4, touchState.startScale * scaleFactor));
+    // 以双指中心为锚点缩放：保持中心点世界坐标不变
+    const worldCenterBefore = screenToWorld(cx, cy);
+    STATE.viewport.scale = newScale;
+    const worldCenterAfter = screenToWorld(cx, cy);
+    STATE.viewport.x += (worldCenterAfter.x - worldCenterBefore.x) * newScale;
+    STATE.viewport.y += (worldCenterAfter.y - worldCenterBefore.y) * newScale;
+    render();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', async (e) => {
+  const wasPan = touchState.mode === 'pan';
+  const wasPinch = touchState.mode === 'pinch';
+  const touchNode = touchState.node;
+  const startWorld = touchState.startWorld;
+  touchState = { mode: 'none', startDist: 0, startScale: 1, lastCenter: null };
+  isDragging = false;
+  // 清除悬停
+  if (hoverNode) { hoverNode = null; hideTooltip(); }
+  render();
+  if (wasPan && touchNode && startWorld) {
+    // 单指点击节点：计算移动距离判断是否为点击
+    // touchend 没有 changedTouches 坐标，用最后 touchmove 的 lastMouse
+    const dx = lastMouse.x - (startWorld ? screenToWorldInverse(startWorld).x : 0);
+    // 简化为：如果释放了且之前按在节点上，视为点击
+    if (STATE.isEditing) {
+      selectNode(touchNode.id);
+    } else if (!touchNode.isMain) {
+      await navigateTo(touchNode.id, true);
+    }
+  }
+});
+
+canvas.addEventListener('touchcancel', () => {
+  touchState = { mode: 'none', startDist: 0, startScale: 1, lastCenter: null };
+  isDragging = false;
+  if (hoverNode) { hoverNode = null; hideTooltip(); }
+  render();
+});
+
+// 辅助：世界坐标 → 屏幕坐标（用于 touchend 判断）
+function screenToWorldInverse(world) {
+  // world = (screen - vp) / scale  =>  screen = world * scale + vp
+  return {
+    x: world.x * STATE.viewport.scale + STATE.viewport.x,
+    y: world.y * STATE.viewport.scale + STATE.viewport.y
+  };
+}
+
+// 右键点击 → 弹出菜单
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const world = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+  const node = findNodeAt(world.x, world.y);
+  if (STATE.isEditing && !node) {
+    // 编辑模式下右键空白处 → 添加新节点
+    showAddNodeMenu(world.x, world.y, e.clientX, e.clientY);
+  } else if (node) {
+    showNodeContextMenu(node, e.clientX, e.clientY);
+  }
+});
+
+let contextMenu = null;
+
+function showAddNodeMenu(worldX, worldY, cx, cy) {
+  removeContextMenu();
+  const menu = document.createElement('div');
+  menu.style.cssText = `position:fixed;left:${cx}px;top:${cy}px;z-index:9999;background:rgba(26,26,46,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px;min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.4);`;
+  const items = [
+    { text: '➕ 添加脑图节点', action: () => addNewNode(worldX, worldY, 'mindmap') },
+    { text: '📝 添加词条详解', action: () => addNewNode(worldX, worldY, 'article') },
+  ];
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.textContent = item.text;
+    btn.style.cssText = 'display:block;width:100%;padding:8px 12px;border:none;background:transparent;color:#e0e0e0;font-size:13px;font-family:inherit;cursor:pointer;border-radius:4px;text-align:left;';
+    btn.onmouseenter = () => btn.style.background = 'rgba(255,255,255,0.08)';
+    btn.onmouseleave = () => btn.style.background = 'transparent';
+    btn.onclick = () => { item.action(); removeContextMenu(); };
+    menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+  contextMenu = menu;
+  setTimeout(() => document.addEventListener('click', (e) => { if (!menu.contains(e.target)) removeContextMenu(); }, { once: true }), 0);
+}
+
+function generateShortId() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < 5; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
+}
+
+function addNewNode(worldX, worldY, nodeType) {
+  const page = STATE.graph[STATE.focusId];
+  if (!page) return;
+  if (!page.children) page.children = [];
+
+  // 生成简短唯一 ID（如 a3f7k）
+  let newId = generateShortId();
+  while (STATE.graph[newId]) newId = generateShortId();
+
+  const newPage = {
+    id: newId,
+    word: nodeType === 'article' ? '新词条' : '新节点',
+    description: '',
+    type: nodeType,
+    children: []
+  };
+  if (nodeType === 'article') {
+    newPage.markdown = '## ' + newPage.word + '\n\n在这里输入词条内容...\n';
+  }
+
+  STATE.graph[newId] = newPage;
+
+  page.children.push({
+    word: newPage.word,
+    targetPageId: newId,
+    weight: Math.floor(Math.random() * 100) + 1,
+    description: '',
+    connection: { label: '', style: 'solid-arrow', color: randomColor() },
+    sphere: { style: 'metal', color: randomColor(), radius: 46 }
+  });
+
+  allNodes = computeLayout(STATE.focusId);
+  nodeAnimStates.clear();
+  selectNode(newId);
+  render();
+  updateUI();
+  log(`添加新节点: ${newId}`, 'ok');
+}
+
+function showNodeContextMenu(node, cx, cy) {
+  removeContextMenu();
+  const menu = document.createElement('div');
+  menu.style.cssText = `position:fixed;left:${cx}px;top:${cy}px;z-index:9999;background:rgba(26,26,46,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px;min-width:140px;box-shadow:0 4px 16px rgba(0,0,0,0.4);`;
+  const items = [
+    { text: `📋 复制链接: ${node.word}`, action: () => navigator.clipboard?.writeText(node.id) },
+    { text: `🔗 页面ID: ${node.id}`, action: () => {} },
+  ];
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.textContent = item.text;
+    btn.style.cssText = 'display:block;width:100%;padding:8px 12px;border:none;background:transparent;color:#e0e0e0;font-size:13px;font-family:inherit;cursor:pointer;border-radius:4px;text-align:left;';
+    btn.onmouseenter = () => btn.style.background = 'rgba(255,255,255,0.08)';
+    btn.onmouseleave = () => btn.style.background = 'transparent';
+    btn.onclick = () => { item.action(); removeContextMenu(); };
+    menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+  contextMenu = menu;
+
+  const close = (e) => { if (!menu.contains(e.target)) removeContextMenu(); };
+  setTimeout(() => document.addEventListener('click', close, { once: true }), 0);
+}
+
+function removeContextMenu() {
+  if (contextMenu) { contextMenu.remove(); contextMenu = null; }
+}
+
+// ===== 气泡提示 =====
+
+function showTooltip(node, sx, sy) {
+  const tooltip = document.getElementById('tooltip');
+  const title = document.getElementById('tooltip-title');
+  const desc = document.getElementById('tooltip-desc');
+  title.textContent = node.word;
+  desc.textContent = node.description || '';
+  desc.style.display = node.description ? 'block' : 'none';
+
+  tooltip.classList.add('visible');
+  positionTooltip(sx, sy);
+}
+
+function showConnectionTooltip(conn, sx, sy) {
+  const tooltip = document.getElementById('tooltip');
+  const title = document.getElementById('tooltip-title');
+  const desc = document.getElementById('tooltip-desc');
+  title.textContent = `${conn.from.word} → ${conn.to.word}`;
+  const lines = [];
+  if (conn.label) lines.push(`关系：${conn.label}`);
+  if (conn.description) lines.push(conn.description);
+  desc.textContent = lines.join('\n');
+  desc.style.display = lines.length ? 'block' : 'none';
+
+  tooltip.classList.add('visible');
+  positionTooltip(sx, sy);
+}
+
+function positionTooltip(sx, sy) {
+  const tooltip = document.getElementById('tooltip');
+  const rect = tooltip.getBoundingClientRect();
+  let x = sx + 15, y = sy - rect.height / 2;
+  if (x + rect.width > window.innerWidth - 10) x = sx - rect.width - 15;
+  if (y < 5) y = 5;
+  if (y + rect.height > window.innerHeight - 5) y = window.innerHeight - rect.height - 5;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+function hideTooltip() {
+  document.getElementById('tooltip').classList.remove('visible');
+}
+
+// ===== Markdown 解析器 =====
+function parseMarkdown(md) {
+  if (!md) return '';
+  let html = md;
+
+  // 保护代码块和行内代码（用占位符替换）
+  const codeBlocks = [];
+  html = html.replace(/```([\w]*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+    codeBlocks.push(`<pre><code${lang ? ` class="language-${lang}"` : ''}>${escapeHtml(code.trim())}</code></pre>`);
+    return '\x00CODE' + (codeBlocks.length - 1) + '\x00';
+  });
+  const inlineCodes = [];
+  html = html.replace(/`([^`]+)`/g, (match, code) => {
+    inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
+    return '\x00INLINE' + (inlineCodes.length - 1) + '\x00';
+  });
+
+  // 转义 HTML 实体（除了占位符）
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // 标题 ### ## #
+  html = html.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
+  html = html.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
+  html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+  // 引用 >
+  html = html.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
+
+  // 图片 ![alt](src)
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+
+  // 链接 [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+  // 自动链接 <url> 和 <email>
+  html = html.replace(/<([a-z][a-z0-9+.-]*:[^>]+)>/gi, '<a href="$1" target="_blank">$1</a>');
+  html = html.replace(/<([^@\s>]+@[^@\s>]+\.[^@\s>]+)>/g, '<a href="mailto:$1">$1</a>');
+
+  // 粗斜体 ***text***
+  html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+
+  // 加粗 **text**
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+  // 斜体 *text*
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // 删除线 ~~text~~
+  html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+  // 高亮 ==text==
+  html = html.replace(/==(.*?)==/g, '<mark style="background:rgba(255,220,100,0.25);padding:1px 4px;border-radius:3px;">$1</mark>');
+
+  // 下标 H~2~O
+  html = html.replace(/~([^~\s]+)~/g, '<sub>$1</sub>');
+  // 上标 x^2^
+  html = html.replace(/\^([^\^\s]+)\^/g, '<sup>$1</sup>');
+
+  // 水平线 --- / *** / ___
+  html = html.replace(/^(---|\*{3,}|_{3,})\s*$/gim, '<hr>');
+
+  // 任务列表 - [x] / - [ ]
+  html = html.replace(/^- \[x\] (.*$)/gim, '<li><input type="checkbox" checked disabled style="margin-right:6px;vertical-align:middle;">$1</li>');
+  html = html.replace(/^- \[ \] (.*$)/gim, '<li><input type="checkbox" disabled style="margin-right:6px;vertical-align:middle;">$1</li>');
+
+  // 无序列表 - / * / +
+  html = html.replace(/^([\-\*\+]) (.*$)/gim, '<li>$2</li>');
+  // 包裹相邻的 li 为 ul
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul>${match.replace(/\n/g, '')}</ul>`);
+
+  // 有序列表 1. / 2.
+  html = html.replace(/^\d+\. (.*$)/gim, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
+    if (match.includes('<ul>')) return match;
+    return `<ol>${match.replace(/\n/g, '')}</ol>`;
+  });
+
+  // 表格（简单的 GFM 表格）
+  html = processMarkdownTables(html);
+
+  // 段落包裹
+  const blockTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'hr', 'table', 'p'];
+  const lines = html.split('\n');
+  let out = [];
+  let inPara = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isBlock = blockTags.some(tag => trimmed.startsWith(`<${tag}`) || trimmed.startsWith(`</${tag}`));
+    if (isBlock || trimmed === '') {
+      if (inPara) { out.push('</p>'); inPara = false; }
+      if (trimmed !== '') out.push(trimmed);
+    } else {
+      if (!inPara) { out.push('<p>'); inPara = true; }
+      out.push(trimmed);
+    }
+  }
+  if (inPara) out.push('</p>');
+  html = out.join('\n');
+
+  // 清理空 p
+  html = html.replace(/<p>\s*<\/p>/g, '');
+
+  // 恢复代码块和行内代码
+  html = html.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[+i]);
+  html = html.replace(/\x00INLINE(\d+)\x00/g, (_, i) => inlineCodes[+i]);
+
+  return html;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function processMarkdownTables(html) {
+  const lines = html.split('\n');
+  let out = [];
+  let inTable = false;
+  let tableRows = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // 检测表格行：| col1 | col2 | col3 |
+    if (/^\|(.+)\|$/.test(line.trim()) || /^\|(.+)\|$/.test(line)) {
+      const cells = line.split('|').slice(1, -1).map(c => c.trim());
+      if (cells.every(c => /^[\-:]+$/.test(c.replace(/\s/g, '')))) {
+        // 分隔行 |---|---|
+        inTable = true;
+        continue;
+      }
+      if (inTable || (i + 1 < lines.length && /^\|([\-\s|:]+)\|$/.test(lines[i + 1]))) {
+        inTable = true;
+        tableRows.push(cells);
+        continue;
+      }
+    }
+    if (inTable) {
+      // 输出表格
+      out.push('<table>');
+      tableRows.forEach((row, idx) => {
+        const tag = idx === 0 ? 'th' : 'td';
+        out.push('<tr>' + row.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>');
+      });
+      out.push('</table>');
+      inTable = false;
+      tableRows = [];
+    }
+    out.push(line);
+  }
+  if (inTable) {
+    out.push('<table>');
+    tableRows.forEach((row, idx) => {
+      const tag = idx === 0 ? 'th' : 'td';
+      out.push('<tr>' + row.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>');
+    });
+    out.push('</table>');
+  }
+  return out.join('\n');
+}
+
+// ===== 导航 =====
+
+async function navigateTo(pageId, addHistory = true, animated = true) {
+  if (!STATE.graph[pageId]) {
+    log(`页面不存在: ${pageId}`, 'err');
+    await showDialog({ title: '❌ 页面不存在', msg: `页面 "${pageId}" 不存在或未被加载。`, buttons: [{ text: '确定', value: null, primary: true }] });
+    return;
+  }
+
+  // 自引用检查
+  if (pageId === STATE.focusId) return;
+
+  log(`导航到: ${pageId}`, 'info');
+
+  // 添加历史
+  if (addHistory) {
+    STATE.history = STATE.history.slice(0, STATE.historyIndex + 1);
+    STATE.history.push({
+      pageId: pageId,
+      viewport: { ...STATE.viewport }
+    });
+    STATE.historyIndex = STATE.history.length - 1;
+  }
+
+  STATE.focusId = pageId;
+  const page = STATE.graph[pageId];
+  const pageType = page.type || 'mindmap';
+
+  // 隐藏文章视图
+  document.getElementById('article-view').style.display = 'none';
+  document.getElementById('canvas-container').style.display = 'block';
+
+  if (pageType === 'article') {
+    // 词条详解页面
+    showArticleView(page);
+  } else {
+    // 脑图页面（默认）
+    allNodes = computeLayout(pageId);
+    nodeAnimStates.clear();
+    if (animated) {
+      await animateViewportTo(0, 0, 1, true);
+    } else {
+      STATE.viewport = { x: 0, y: 0, scale: 1 };
+    }
+    updateUI();
+    render();
+    updateMinimap();
+  }
+}
+
+function showArticleView(page) {
+  const articleView = document.getElementById('article-view');
+  const articleTitle = document.getElementById('article-title');
+  const articleContent = document.getElementById('article-content');
+
+  articleTitle.textContent = page.word || '词条详解';
+  articleContent.innerHTML = parseMarkdown(page.markdown || page.description || '');
+
+  articleView.style.display = 'block';
+  document.getElementById('canvas-container').style.display = 'none';
+  articleView.scrollTop = 0;
+
+  // 重置为预览模式
+  exitArticleEditMode(false);
+
+  // 绑定返回按钮
+  document.getElementById('btn-article-back').onclick = () => {
+    goBack();
+  };
+
+  // 绑定编辑按钮
+  document.getElementById('btn-article-edit').onclick = () => {
+    enterArticleEditMode(page);
+  };
+
+  updateUI();
+}
+
+let _articleEditPage = null;
+
+function enterArticleEditMode(page) {
+  _articleEditPage = page;
+  const content = document.getElementById('article-content');
+  const editor = document.getElementById('article-editor');
+  const textarea = document.getElementById('article-textarea');
+  const preview = document.getElementById('article-preview');
+
+  content.style.display = 'none';
+  editor.style.display = 'block';
+
+  // 切换按钮
+  document.getElementById('btn-article-edit').style.display = 'none';
+  document.getElementById('btn-article-save').style.display = 'inline-block';
+  document.getElementById('btn-article-cancel').style.display = 'inline-block';
+
+  // 填充当前 markdown
+  textarea.value = page.markdown || page.description || '';
+  preview.innerHTML = parseMarkdown(textarea.value);
+
+  // 实时预览
+  textarea.oninput = () => {
+    preview.innerHTML = parseMarkdown(textarea.value);
+  };
+
+  // 绑定保存/取消
+  document.getElementById('btn-article-save').onclick = saveArticleEdit;
+  document.getElementById('btn-article-cancel').onclick = () => exitArticleEditMode(true);
+}
+
+function saveArticleEdit() {
+  if (!_articleEditPage) return;
+  const textarea = document.getElementById('article-textarea');
+  const newMarkdown = textarea.value;
+
+  // 更新 page
+  _articleEditPage.markdown = newMarkdown;
+  // 同时更新 description（兼容旧数据）
+  _articleEditPage.description = newMarkdown;
+
+  // 如果当前焦点页面就是这个 page，也要更新 graph
+  if (STATE.graph[_articleEditPage.id]) {
+    STATE.graph[_articleEditPage.id].markdown = newMarkdown;
+    STATE.graph[_articleEditPage.id].description = newMarkdown;
+  }
+
+  log('词条内容已保存', 'ok');
+  exitArticleEditMode(false);
+
+  // 重新渲染预览
+  const articleContent = document.getElementById('article-content');
+  articleContent.innerHTML = parseMarkdown(newMarkdown);
+}
+
+function exitArticleEditMode(restorePreview) {
+  const content = document.getElementById('article-content');
+  const editor = document.getElementById('article-editor');
+
+  content.style.display = 'block';
+  editor.style.display = 'none';
+
+  document.getElementById('btn-article-edit').style.display = 'inline-block';
+  document.getElementById('btn-article-save').style.display = 'none';
+  document.getElementById('btn-article-cancel').style.display = 'none';
+
+  _articleEditPage = null;
+}
+
+async function animateViewportTo(targetX, targetY, targetScale, useTransition = true) {
+  if (!useTransition || STATE.transition === 'none') {
+    STATE.viewport = { x: targetX, y: targetY, scale: targetScale };
+    render();
+    return;
+  }
+
+  const start = { ...STATE.viewport };
+  const duration = STATE.transition === 'zoom' ? 600 : 400;
+  const startTime = performance.now();
+
+  return new Promise(resolve => {
+    function step(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const ease = easeOutCubic(t);
+      STATE.viewport = {
+        x: start.x + (targetX - start.x) * ease,
+        y: start.y + (targetY - start.y) * ease,
+        scale: start.scale + (targetScale - start.scale) * ease
+      };
+      render();
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        STATE.viewport = { x: targetX, y: targetY, scale: targetScale };
+        render();
+        resolve();
+      }
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// ===== 历史面板 =====
+
+function updateHistoryPanel() {
+  const list = document.getElementById('history-list');
+  const count = document.getElementById('history-count');
+  if (!list) return;
+
+  list.innerHTML = '';
+  if (count) count.textContent = `${STATE.history.length} 条`;
+
+  STATE.history.forEach((entry, idx) => {
+    const page = STATE.graph[entry.pageId];
+    const item = document.createElement('div');
+    item.className = `history-item${idx === STATE.historyIndex ? ' current' : ''}`;
+    item.innerHTML = `<span class="history-item-dot">${idx === STATE.historyIndex ? '●' : '○'}</span><span class="history-item-word">${page?.word || entry.pageId}</span><span class="history-item-time">${formatTime(entry.viewport?.ts || Date.now())}</span>`;
+    item.onclick = () => jumpToHistory(idx);
+    list.appendChild(item);
+  });
+
+  // 更新工具栏按钮
+  document.getElementById('btn-back').disabled = STATE.historyIndex <= 0;
+  document.getElementById('btn-forward').disabled = STATE.historyIndex >= STATE.history.length - 1;
+}
+
+async function jumpToHistory(idx) {
+  if (idx < 0 || idx >= STATE.history.length) return;
+  STATE.historyIndex = idx;
+  const entry = STATE.history[idx];
+  STATE.focusId = entry.pageId;
+  const page = STATE.graph[entry.pageId];
+
+  document.getElementById('article-view').style.display = 'none';
+  document.getElementById('canvas-container').style.display = 'block';
+
+  if (page && page.type === 'article') {
+    showArticleView(page);
+  } else {
+    allNodes = computeLayout(entry.pageId);
+    STATE.viewport = { ...entry.viewport };
+    updateUI();
+    render();
+    updateMinimap();
+  }
+}
+
+function goBack() {
+  if (STATE.historyIndex > 0) {
+    jumpToHistory(STATE.historyIndex - 1);
+  }
+}
+
+function goForward() {
+  if (STATE.historyIndex < STATE.history.length - 1) {
+    jumpToHistory(STATE.historyIndex + 1);
+  }
+}
+
+function goHome() {
+  const rootId = STATE.graph['config']?.rootPageId || 'INDEX';
+  if (STATE.graph[rootId]) navigateTo(rootId);
+  else if (Object.keys(STATE.graph).filter(id => id !== 'config').length) {
+    const first = Object.keys(STATE.graph).filter(id => id !== 'config')[0];
+    navigateTo(first);
+  }
+}
+
+// ===== 搜索 =====
+
+let searchIndex = [];
+
+function buildSearchIndex() {
+  searchIndex = Object.keys(STATE.graph)
+    .filter(id => id !== 'config')
+    .map(id => {
+      const page = STATE.graph[id];
+      const text = `${page.word || ''} ${page.description || ''} ${id}`.toLowerCase();
+      return { id, word: page.word || id, description: page.description || '', text };
+    });
+}
+
+function performSearch(query) {
+  if (!query.trim()) return [];
+  const q = query.toLowerCase();
+  return searchIndex.filter(item => item.text.includes(q)).slice(0, 20);
+}
+
+function renderSearchResults(results, query) {
+  const container = document.getElementById('search-results');
+  container.innerHTML = '';
+  if (!results.length) {
+    container.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:13px;">未找到 "${query}"</div>`;
+    return;
+  }
+  results.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'search-result-item';
+    item.innerHTML = `<span class="search-result-word">${highlight(r.word, query)}</span><span class="search-result-path">${r.id}</span>`;
+    item.onclick = () => {
+      closeSearch();
+      navigateTo(r.id);
+    };
+    container.appendChild(item);
+  });
+}
+
+function highlight(text, query) {
+  if (!query) return text;
+  const i = text.toLowerCase().indexOf(query.toLowerCase());
+  if (i < 0) return text;
+  return text.slice(0, i) + '<b style="color:var(--accent2)">' + text.slice(i, i + query.length) + '</b>' + text.slice(i + query.length);
+}
+
+function openSearch() {
+  document.getElementById('search-overlay').style.display = 'block';
+  document.getElementById('search-box').value = '';
+  document.getElementById('search-box').focus();
+  renderSearchResults([], '');
+}
+
+function closeSearch() {
+  document.getElementById('search-overlay').style.display = 'none';
+}
+
+// ===== 面包屑 =====
+
+function updateBreadcrumb() {
+  // 当前焦点页面
+  const page = STATE.graph[STATE.focusId];
+  document.title = `${page?.word || STATE.focusId} - BrainSphere`;
+}
+
+// ===== UI 更新 =====
+
+function updateUI() {
+  updateHistoryPanel();
+  updateBreadcrumb();
+  const page = STATE.graph[STATE.focusId];
+  document.getElementById('topbar-title').innerHTML = page ? `📍 <strong>${page.word || STATE.focusId}</strong>` : 'BrainSphere';
+}
+
+// ===== 迷你地图 =====
+
+function updateMinimap() {
+  const mm = document.getElementById('minimap');
+  if (!mm.classList.contains('visible')) return;
+  const mcanvas = document.getElementById('minimap-canvas');
+  const mctx = mcanvas.getContext('2d');
+  const W = mcanvas.width = mm.clientWidth;
+  const H = mcanvas.height = mm.clientHeight;
+
+  mctx.clearRect(0, 0, W, H);
+
+  // 收集所有节点位置
+  const allPos = [];
+  for (const [id, page] of Object.entries(STATE.graph)) {
+    if (id === 'config') continue;
+    const x = id === STATE.focusId ? 0 : allPos.length * 50; // 简化：实际应计算相对位置
+    allPos.push({ id, word: page.word || id, x, y: 0, isMain: id === STATE.focusId });
+  }
+
+  if (allPos.length === 0) return;
+
+  // 计算包围框
+  const xs = allPos.map(n => n.x), ys = allPos.map(n => n.y);
+  const minX = Math.min(...xs) - 100, maxX = Math.max(...xs) + 100;
+  const minY = Math.min(...ys) - 100, maxY = Math.max(...ys) + 100;
+  const spanX = maxX - minX || 1, spanY = maxY - minY || 1;
+  const scaleX = (W - 20) / spanX, scaleY = (H - 20) / spanY;
+  const scale = Math.min(scaleX, scaleY);
+
+  function toScreen(x, y) {
+    return { x: (x - minX) * scale + 10, y: (y - minY) * scale + 10 };
+  }
+
+  // 绘制
+  for (const node of allPos) {
+    const pos = toScreen(node.x, node.y);
+    mctx.beginPath();
+    mctx.arc(pos.x, pos.y, node.isMain ? 5 : 3, 0, Math.PI * 2);
+    mctx.fillStyle = node.isMain ? '#4a90d9' : '#6ab0ff';
+    mctx.fill();
+  }
+
+  // 当前视口框
+  const vpW = canvas.width / STATE.viewport.scale * scale;
+  const vpH = canvas.height / STATE.viewport.scale * scale;
+  const vpX = (canvas.width / 2 + STATE.viewport.x) / STATE.viewport.scale * scale;
+  const vpY = (canvas.height / 2 + STATE.viewport.y) / STATE.viewport.scale * scale;
+  mctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  mctx.lineWidth = 1;
+  mctx.strokeRect(vpX - vpW / 2, vpY - vpH / 2, vpW, vpH);
+}
+
+// ===== 主题 =====
+
+function applyTheme(isDark) {
+  STATE.isDark = isDark;
+  const root = document.documentElement;
+  if (isDark) {
+    root.style.setProperty('--bg', '#1a1a2e');
+    root.style.setProperty('--panel-bg', 'rgba(26,26,46,0.96)');
+    root.style.setProperty('--panel-border', 'rgba(255,255,255,0.08)');
+    root.style.setProperty('--text', '#e0e0e0');
+    root.style.setProperty('--text-dim', '#888');
+    root.style.setProperty('--accent', '#4a90d9');
+    root.style.setProperty('--accent2', '#6ab0ff');
+  } else {
+    root.style.setProperty('--bg', '#f0f2f8');
+    root.style.setProperty('--panel-bg', 'rgba(255,255,255,0.92)');
+    root.style.setProperty('--panel-border', 'rgba(0,0,0,0.1)');
+    root.style.setProperty('--text', '#1a1a2e');
+    root.style.setProperty('--text-dim', '#666');
+    root.style.setProperty('--accent', '#3a80c9');
+    root.style.setProperty('--accent2', '#4a90d9');
+  }
+  document.getElementById('btn-theme').textContent = isDark ? '🌙' : '☀️';
+  render();
+}
+
+// ===== 导出 PNG =====
+
+function exportPNG() {
+  // 临时重置视口到初始状态并渲染
+  const origViewport = { ...STATE.viewport };
+  STATE.viewport = { x: 0, y: 0, scale: 1 };
+  render();
+
+  const link = document.createElement('a');
+  link.download = `${STATE.graph[STATE.focusId]?.word || STATE.focusId || 'brainmap'}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+
+  STATE.viewport = origViewport;
+  render();
+}
+
+// ===== 全屏 =====
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.();
+  } else {
+    document.exitFullscreen?.();
+  }
+}
+
+// ===== 设置面板 =====
+
+function initSettings() {
+  // 节点形状
+  document.querySelectorAll('.shape-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      STATE.shape = btn.dataset.shape;
+      render();
+    };
+  });
+
+  document.getElementById('setting-conn-style').value = STATE.connStyle;
+  document.getElementById('setting-conn-style').onchange = (e) => {
+    STATE.connStyle = e.target.value;
+    render();
+  };
+
+  document.getElementById('setting-transition').value = STATE.transition;
+  document.getElementById('setting-transition').onchange = (e) => {
+    STATE.transition = e.target.value;
+    if (STATE.graph['config']) STATE.graph['config'].transition = e.target.value;
+    render();
+  };
+
+  document.getElementById('setting-show-labels').checked = STATE.showLabels;
+  document.getElementById('setting-show-labels').onchange = (e) => {
+    STATE.showLabels = e.target.checked;
+    render();
+  };
+
+  document.getElementById('setting-repel-mode').value = STATE.repelMode || 'radial';
+  document.getElementById('setting-repel-mode').onchange = (e) => {
+    STATE.repelMode = e.target.value;
+    // 立即重新计算排斥目标
+    if (hoverNode) {
+      updateHoverTargets();
+      render();
+    }
+  };
+
+  document.getElementById('setting-theme').value = STATE.isDark ? 'dark' : 'light';
+  document.getElementById('setting-theme').onchange = (e) => {
+    applyTheme(e.target.value === 'dark');
+  };
+}
+
+// ===== 调试日志 =====
+
+let _logPanelVisible = false;
+let _historyPanelVisible = true;
+
+function toggleLogPanel() {
+  const panel = document.getElementById('global-log-panel');
+  const btn = document.getElementById('debug-btn');
+  const historyPanel = document.getElementById('history-panel');
+  if (!panel) return;
+
+  _logPanelVisible = !_logPanelVisible;
+  if (_logPanelVisible) {
+    panel.classList.remove('collapsed');
+    if (btn) btn.classList.add('active');
+    // 互斥：打开日志时关闭历史
+    _historyPanelVisible = false;
+    if (historyPanel) historyPanel.classList.add('collapsed');
+  } else {
+    panel.classList.add('collapsed');
+    if (btn) btn.classList.remove('active');
+  }
+}
+
+function toggleHistoryPanel() {
+  const historyPanel = document.getElementById('history-panel');
+  const logPanel = document.getElementById('global-log-panel');
+  const rightPanel = document.getElementById('right-panel');
+  if (!historyPanel) return;
+
+  _historyPanelVisible = !_historyPanelVisible;
+  if (_historyPanelVisible) {
+    historyPanel.classList.remove('collapsed');
+    if (rightPanel) rightPanel.classList.remove('collapsed');
+    // 互斥：打开历史时关闭日志
+    _logPanelVisible = false;
+    if (logPanel) logPanel.classList.add('collapsed');
+    const debugBtn = document.getElementById('debug-btn');
+    if (debugBtn) debugBtn.classList.remove('active');
+  } else {
+    historyPanel.classList.add('collapsed');
+  }
+}
+
+function initDebug() {
+  const btn = document.getElementById('debug-btn');
+  const panel = document.getElementById('global-log-panel');
+  const close = document.getElementById('global-log-close');
+  const linesEl = document.getElementById('global-log-lines');
+
+  // 先渲染缓冲中的历史日志
+  if (linesEl && _LOG_BUFFER.length > 0) {
+    linesEl.innerHTML = '';
+    _LOG_BUFFER.forEach(entry => {
+      const line = document.createElement('div');
+      line.className = 'glog-line glog-' + entry.level;
+      line.textContent = '[' + entry.ts + '] ' + entry.msg;
+      linesEl.appendChild(line);
+    });
+    linesEl.scrollTop = linesEl.scrollHeight;
+  }
+
+  // 初始状态：日志面板折叠
+  if (panel) panel.classList.add('collapsed');
+
+  // debug-btn 控制日志面板（toggle）
+  if (btn) {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      toggleLogPanel();
+    };
+  }
+  if (close) {
+    close.onclick = (e) => {
+      e.stopPropagation();
+      toggleLogPanel();
+    };
+  }
+
+  // 拦截 console → 同时输出到日志
+  const origLog = console.log, origErr = console.error, origWarn = console.warn;
+  console.log = (...args) => { origLog(...args); addConsoleLog('info', args.join(' ')); };
+  console.error = (...args) => { origErr(...args); addConsoleLog('err', args.join(' ')); };
+  console.warn = (...args) => { origWarn(...args); addConsoleLog('warn', args.join(' ')); };
+  _logRaw('info', 'Console 拦截已启用');
+}
+
+function addConsoleLog(type, msg) {
+  // 旧版 loading-log
+  const el = document.getElementById('loading-log');
+  if (el) {
+    const line = document.createElement('div');
+    line.className = 'log-line log-' + type;
+    line.textContent = '[console.' + type + '] ' + msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+  // 新版全局日志
+  _logRaw(type, msg);
+}
+
+// ===== 键盘快捷键 =====
+
+function initKeyboard() {
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+
+    if (e.key === 'Backspace' || e.key === 'Escape') {
+      e.preventDefault();
+      goBack();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      goHome();
+    } else if (e.key === 'r' || e.key === 'R') {
+      STATE.viewport = { x: 0, y: 0, scale: 1 };
+      render();
+    } else if (e.key === 'm' || e.key === 'M') {
+      toggleMinimap();
+    } else if (e.ctrlKey && e.key === 'f') {
+      e.preventDefault();
+      openSearch();
+    } else if (e.ctrlKey && e.key === 'e') {
+      e.preventDefault();
+      exportPNG();
+    } else if (e.key === 'F11') {
+      e.preventDefault();
+      toggleFullscreen();
+    } else if (e.key === 'Delete' || e.key === 'Del') {
+      if (STATE.isEditing && STATE.selectedNodeId) {
+        e.preventDefault();
+        deleteSelectedNode();
+      }
+    } else if (e.ctrlKey && e.key === 's') {
+      e.preventDefault();
+      if (STATE.isEditing) saveProject();
+    }
+  });
+}
+
+function toggleMinimap() {
+  const mm = document.getElementById('minimap');
+  mm.classList.toggle('visible');
+  updateMinimap();
+}
+
+// ===== 工具栏事件绑定 =====
+
+function initToolbar() {
+  document.getElementById('btn-back').onclick = goBack;
+  document.getElementById('btn-forward').onclick = goForward;
+  document.getElementById('btn-tool-home').onclick = goHome;
+  document.getElementById('btn-reset-view').onclick = () => {
+    STATE.viewport = { x: 0, y: 0, scale: 1 };
+    render();
+  };
+  document.getElementById('btn-minimap-toggle').onclick = toggleMinimap;
+  document.getElementById('btn-search').onclick = openSearch;
+  document.getElementById('btn-home').onclick = goHome;
+  document.getElementById('btn-theme').onclick = () => applyTheme(!STATE.isDark);
+  document.getElementById('btn-settings').onclick = () => document.getElementById('settings-panel').classList.toggle('visible');
+  document.getElementById('btn-fullscreen').onclick = toggleFullscreen;
+  document.getElementById('btn-export').onclick = exportPNG;
+
+  // 编辑模式切换
+  document.getElementById('btn-edit-toggle').onclick = toggleEditMode;
+  document.getElementById('btn-code-edit').onclick = openCodeEditor;
+  document.getElementById('btn-save').onclick = saveProject;
+
+  // 属性面板按钮
+  document.getElementById('edit-apply').onclick = applyNodeEdit;
+  document.getElementById('edit-delete').onclick = deleteSelectedNode;
+  document.getElementById('edit-connect-btn').onclick = connectToExistingNode;
+
+  // 代码编辑器按钮
+  document.getElementById('btn-code-close').onclick = closeCodeEditor;
+  document.getElementById('btn-code-apply').onclick = applyCodeEdit;
+  document.getElementById('btn-code-save').onclick = saveCodeEdit;
+
+  // 属性面板折叠按钮
+  document.getElementById('editor-panel-toggle').onclick = (e) => {
+    e.stopPropagation();
+    toggleEditorPanel();
+  };
+  document.getElementById('editor-panel-header').onclick = (e) => {
+    if (e.target.closest('#editor-panel-toggle')) return;
+    toggleEditorPanel();
+  };
+
+  // 代码编辑器实时预览监听
+  const codeTextarea = document.getElementById('code-textarea');
+  const livePreviewCheck = document.getElementById('code-live-preview');
+  let _codePreviewDebounce = null;
+  codeTextarea.addEventListener('input', () => {
+    if (!livePreviewCheck.checked) return;
+    clearTimeout(_codePreviewDebounce);
+    _codePreviewDebounce = setTimeout(() => {
+      try { renderCodePreview(); } catch (_) {}
+    }, 400);
+  });
+
+  // 打开项目
+  document.getElementById('btn-open').onclick = openProjectDialog;
+  document.getElementById('btn-open-dir').onclick = openProjectDialog;
+
+  // 历史面板折叠
+  document.getElementById('history-toggle').onclick = (e) => {
+    e.stopPropagation();
+    toggleHistoryPanel();
+  };
+
+  // 搜索
+  const searchBox = document.getElementById('search-box');
+  searchBox.addEventListener('input', (e) => {
+    const results = performSearch(e.target.value);
+    renderSearchResults(results, e.target.value);
+  });
+  searchBox.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSearch();
+  });
+  document.getElementById('search-overlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('search-overlay')) closeSearch();
+  });
+}
+
+// ===== 编辑模式 =====
+
+let _editorPanelCollapsed = false;
+
+function toggleEditMode() {
+  STATE.isEditing = !STATE.isEditing;
+  const btn = document.getElementById('btn-edit-toggle');
+  const codeBtn = document.getElementById('btn-code-edit');
+  const saveBtn = document.getElementById('btn-save');
+  const editorPanel = document.getElementById('editor-panel');
+
+  if (STATE.isEditing) {
+    btn.textContent = '❌ 退出编辑';
+    btn.style.background = 'rgba(232,72,72,0.2)';
+    codeBtn.style.display = 'inline-block';
+    saveBtn.style.display = 'inline-block';
+    editorPanel.style.display = 'block';
+    if (_editorPanelCollapsed) {
+      editorPanel.classList.add('collapsed');
+    } else {
+      editorPanel.classList.remove('collapsed');
+    }
+    updateEditorPanel();
+    log('进入编辑模式', 'info');
+  } else {
+    btn.textContent = '✏️ 编辑';
+    btn.style.background = '';
+    codeBtn.style.display = 'none';
+    saveBtn.style.display = 'none';
+    editorPanel.style.display = 'none';
+    STATE.selectedNodeId = '';
+    render();
+    log('退出编辑模式', 'info');
+  }
+}
+
+function toggleEditorPanel() {
+  const panel = document.getElementById('editor-panel');
+  _editorPanelCollapsed = !_editorPanelCollapsed;
+  if (_editorPanelCollapsed) {
+    panel.classList.add('collapsed');
+  } else {
+    panel.classList.remove('collapsed');
+  }
+}
+
+function selectNode(nodeId) {
+  if (!STATE.isEditing) return;
+  STATE.selectedNodeId = nodeId;
+  updateEditorPanel();
+  render();
+}
+
+function updateEditorPanel() {
+  const noSel = document.getElementById('editor-no-selection');
+  const form = document.getElementById('editor-form');
+  if (!STATE.selectedNodeId) {
+    noSel.style.display = 'block';
+    form.style.display = 'none';
+    return;
+  }
+
+  const page = STATE.graph[STATE.focusId];
+  if (!page) return;
+
+  // 找当前焦点页面中对应的 child 配置
+  const child = (page.children || []).find(c => c.targetPageId === STATE.selectedNodeId);
+  const node = allNodes.find(n => n.id === STATE.selectedNodeId);
+
+  noSel.style.display = 'none';
+  form.style.display = 'block';
+
+  const isMain = STATE.selectedNodeId === STATE.focusId;
+  document.getElementById('edit-word').value = node?.word || child?.word || '';
+  document.getElementById('edit-id').value = STATE.selectedNodeId;
+  // 节点描述：主节点用 page.description，子节点用 targetPage.description
+  const targetPage = STATE.graph[STATE.selectedNodeId];
+  document.getElementById('edit-desc').value = isMain ? (page?.description || '') : (targetPage?.description || '');
+  // 连线悬浮提示：子节点的 child.description
+  document.getElementById('edit-conn-tooltip').value = child?.description || '';
+  document.getElementById('edit-weight').value = child?.weight || '';
+  document.getElementById('edit-color').value = node?.color || child?.sphere?.color || '#6ab0ff';
+  document.getElementById('edit-style').value = node?.style || child?.sphere?.style || 'glass';
+  document.getElementById('edit-radius').value = node?.radius || child?.sphere?.radius || 46;
+  document.getElementById('edit-conn-label').value = child?.connection?.label || node?.connectionLabel || '';
+
+  // 填充「连接至已有节点」下拉框
+  const connectSelect = document.getElementById('edit-connect-existing');
+  connectSelect.innerHTML = '<option value="">— 选择已有节点 —</option>';
+  const existingChildren = new Set((page.children || []).map(c => c.targetPageId));
+  for (const [pid, pg] of Object.entries(STATE.graph)) {
+    if (pid === 'config') continue;
+    if (pid === STATE.focusId) continue;
+    if (existingChildren.has(pid)) continue; // 已经连接过了
+    const display = `${pg.word || pid} (${pid})`;
+    const opt = document.createElement('option');
+    opt.value = pid;
+    opt.textContent = display;
+    connectSelect.appendChild(opt);
+  }
+}
+
+function applyNodeEdit() {
+  if (!STATE.selectedNodeId) return;
+  const page = STATE.graph[STATE.focusId];
+  if (!page) return;
+
+  let child = (page.children || []).find(c => c.targetPageId === STATE.selectedNodeId);
+  const isMain = STATE.selectedNodeId === STATE.focusId;
+
+  const word = document.getElementById('edit-word').value.trim();
+  const desc = document.getElementById('edit-desc').value.trim();
+  const connTooltip = document.getElementById('edit-conn-tooltip').value.trim();
+  const weightVal = document.getElementById('edit-weight').value.trim();
+  const color = document.getElementById('edit-color').value;
+  const style = document.getElementById('edit-style').value;
+  const radius = parseInt(document.getElementById('edit-radius').value, 10) || 46;
+  const connLabel = document.getElementById('edit-conn-label').value.trim();
+
+  if (isMain) {
+    // 编辑主节点
+    page.word = word;
+    page.description = desc;
+    if (!page.sphere) page.sphere = {};
+    page.sphere.color = color;
+    page.sphere.style = style;
+    page.sphere.radius = radius;
+  } else {
+    // 编辑子节点
+    if (!child) {
+      // 如果子节点不存在，创建一个
+      child = { targetPageId: STATE.selectedNodeId, word, weight: 1 };
+      page.children = page.children || [];
+      page.children.push(child);
+    }
+    child.word = word;
+    child.description = connTooltip; // 连线悬浮提示独立设置
+    child.weight = weightVal ? parseInt(weightVal, 10) : (child.weight || Math.floor(Math.random() * 100) + 1);
+    if (!child.sphere) child.sphere = {};
+    child.sphere.color = color;
+    child.sphere.style = style;
+    child.sphere.radius = radius;
+    if (!child.connection) child.connection = {};
+    child.connection.label = connLabel;
+  }
+
+  // 同时更新目标页面的基本信息
+  const targetPage = STATE.graph[STATE.selectedNodeId];
+  if (targetPage) {
+    targetPage.word = word;
+    targetPage.description = desc; // 节点描述与 edit-desc 同步
+  }
+
+  // 重新布局
+  allNodes = computeLayout(STATE.focusId);
+  nodeAnimStates.clear();
+  render();
+  updateUI();
+  log('节点属性已更新', 'ok');
+}
+
+function deleteSelectedNode() {
+  if (!STATE.selectedNodeId) return;
+  if (STATE.selectedNodeId === STATE.focusId) {
+    log('不能删除当前焦点节点', 'warn');
+    return;
+  }
+  const page = STATE.graph[STATE.focusId];
+  if (!page || !page.children) return;
+  page.children = page.children.filter(c => c.targetPageId !== STATE.selectedNodeId);
+  STATE.selectedNodeId = '';
+  allNodes = computeLayout(STATE.focusId);
+  nodeAnimStates.clear();
+  render();
+  updateEditorPanel();
+  updateUI();
+  log('节点已删除', 'ok');
+}
+
+function connectToExistingNode() {
+  const select = document.getElementById('edit-connect-existing');
+  const targetId = select.value;
+  if (!targetId) {
+    log('请先选择一个已有节点', 'warn');
+    return;
+  }
+  const focusPage = STATE.graph[STATE.focusId];
+  if (!focusPage) return;
+  if (!focusPage.children) focusPage.children = [];
+
+  // 避免重复连接
+  const existing = focusPage.children.find(c => c.targetPageId === targetId);
+  if (existing) {
+    log('该节点已连接', 'warn');
+    return;
+  }
+
+  const targetPage = STATE.graph[targetId];
+  focusPage.children.push({
+    word: targetPage?.word || targetId,
+    targetPageId: targetId,
+    weight: Math.floor(Math.random() * 100) + 1,
+    description: targetPage?.description || '',
+    connection: { label: '', style: 'solid-arrow', color: '#888888' },
+    sphere: { style: 'glass', color: '#6ab0ff', radius: 46 }
+  });
+
+  allNodes = computeLayout(STATE.focusId);
+  nodeAnimStates.clear();
+  render();
+  updateUI();
+  updateEditorPanel(); // 刷新下拉框，去掉已连接的项
+  log(`已连接到节点「${targetPage?.word || targetId}」`, 'ok');
+}
+
+// ===== JSON 容错解析 =====
+function safeJSONParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    // 尝试自动修复：将 JSON 字符串中的真实控制字符转为转义序列
+    let fixed = '';
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const code = ch.charCodeAt(0);
+      if (escaped) {
+        fixed += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        fixed += ch;
+        escaped = true;
+        continue;
+      }
+      if (!inString) {
+        if (ch === '"') inString = true;
+        fixed += ch;
+        continue;
+      }
+      // inString === true
+      if (ch === '"') {
+        inString = false;
+        fixed += ch;
+        continue;
+      }
+      // 在字符串内部，控制字符需要转义
+      if (code >= 0 && code <= 31) {
+        if (code === 9) fixed += '\\t';
+        else if (code === 10) fixed += '\\n';
+        else if (code === 13) fixed += '\\r';
+        else fixed += '\\u' + code.toString(16).padStart(4, '0');
+        continue;
+      }
+      fixed += ch;
+    }
+    try {
+      const result = JSON.parse(fixed);
+      _logRaw('warn', 'JSON 已自动修复控制字符');
+      return result;
+    } catch (e2) {
+      throw e;
+    }
+  }
+}
+
+// ===== 代码编辑模式 =====
+
+function openCodeEditor() {
+  const page = STATE.graph[STATE.focusId];
+  if (!page) return;
+  const json = JSON.stringify(page, null, 2);
+  document.getElementById('code-textarea').value = json;
+  document.getElementById('code-editor').style.display = 'flex';
+  // 初始化预览canvas尺寸
+  const previewCanvas = document.getElementById('code-preview-canvas');
+  const wrap = document.getElementById('code-preview-wrap');
+  previewCanvas.width = wrap.clientWidth;
+  previewCanvas.height = wrap.clientHeight;
+  renderCodePreview();
+}
+
+function closeCodeEditor() {
+  document.getElementById('code-editor').style.display = 'none';
+}
+
+function applyCodeEdit() {
+  try {
+    const json = safeJSONParse(document.getElementById('code-textarea').value);
+    STATE.graph[STATE.focusId] = json;
+    allNodes = computeLayout(STATE.focusId);
+    nodeAnimStates.clear();
+    render();
+    updateUI();
+    renderCodePreview();
+    log('JSON 已应用', 'ok');
+  } catch (e) {
+    log(`JSON 格式错误: ${e.message}`, 'err');
+    showDialog({ title: '❌ JSON 错误', msg: e.message, buttons: [{ text: '确定', value: null, primary: true }] });
+  }
+}
+
+function saveCodeEdit() {
+  try {
+    const json = safeJSONParse(document.getElementById('code-textarea').value);
+    STATE.graph[STATE.focusId] = json;
+    allNodes = computeLayout(STATE.focusId);
+    nodeAnimStates.clear();
+    render();
+    updateUI();
+    // 触发下载
+    const pageId = STATE.focusId;
+    const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${pageId}.brain.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    log('JSON 已保存并下载', 'ok');
+  } catch (e) {
+    log(`JSON 格式错误: ${e.message}`, 'err');
+    showDialog({ title: '❌ JSON 错误', msg: e.message, buttons: [{ text: '确定', value: null, primary: true }] });
+  }
+}
+
+// 在代码编辑器右侧渲染预览缩略图
+function renderCodePreview() {
+  const textarea = document.getElementById('code-textarea');
+  const previewCanvas = document.getElementById('code-preview-canvas');
+  const errorDiv = document.getElementById('code-preview-error');
+  if (!previewCanvas || !textarea) return;
+
+  let json;
+  try {
+    json = safeJSONParse(textarea.value);
+  } catch (e) {
+    errorDiv.textContent = '预览失败：' + e.message;
+    errorDiv.style.display = 'flex';
+    return;
+  }
+  errorDiv.style.display = 'none';
+
+  // 临时替换STATE.graph中的当前页面以计算布局
+  const originalPage = STATE.graph[STATE.focusId];
+  STATE.graph[STATE.focusId] = json;
+  const nodes = computeLayout(STATE.focusId);
+  STATE.graph[STATE.focusId] = originalPage; // 恢复
+
+  const ctx = previewCanvas.getContext('2d');
+  const w = previewCanvas.width;
+  const h = previewCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  if (nodes.length === 0) return;
+
+  // 计算边界
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    minX = Math.min(minX, n.x - n.radius);
+    maxX = Math.max(maxX, n.x + n.radius);
+    minY = Math.min(minY, n.y - n.radius);
+    maxY = Math.max(maxY, n.y + n.radius);
+  }
+  const pad = 30;
+  const cw = Math.max(maxX - minX, 100);
+  const ch = Math.max(maxY - minY, 100);
+  const scale = Math.min((w - pad * 2) / cw, (h - pad * 2) / ch);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(scale, scale);
+  ctx.translate(-cx, -cy);
+
+  // 绘制连线
+  const main = nodes.find(n => n.isMain);
+  if (main) {
+    for (const n of nodes) {
+      if (n.isMain) continue;
+      ctx.beginPath();
+      ctx.moveTo(main.x, main.y);
+      ctx.lineTo(n.x, n.y);
+      ctx.strokeStyle = n.connectionColor || '#888888';
+      ctx.lineWidth = 2 / scale;
+      ctx.stroke();
+      // 箭头
+      const angle = Math.atan2(n.y - main.y, n.x - main.x);
+      const arrSize = 8 / scale;
+      ctx.beginPath();
+      ctx.moveTo(n.x - Math.cos(angle) * (n.radius + 4), n.y - Math.sin(angle) * (n.radius + 4));
+      ctx.lineTo(n.x - Math.cos(angle) * (n.radius + 4) - Math.cos(angle - 0.5) * arrSize, n.y - Math.sin(angle) * (n.radius + 4) - Math.sin(angle - 0.5) * arrSize);
+      ctx.lineTo(n.x - Math.cos(angle) * (n.radius + 4) - Math.cos(angle + 0.5) * arrSize, n.y - Math.sin(angle) * (n.radius + 4) - Math.sin(angle + 0.5) * arrSize);
+      ctx.closePath();
+      ctx.fillStyle = n.connectionColor || '#888888';
+      ctx.fill();
+    }
+  }
+
+  // 绘制节点
+  for (const n of nodes) {
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+    ctx.fillStyle = n.color || '#6ab0ff';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1.5 / scale;
+    ctx.stroke();
+
+    // 标签
+    ctx.fillStyle = n.fontColor || '#ffffff';
+    const fontSize = Math.max(8, Math.min(n.fontSize || 14, n.radius * 0.45));
+    ctx.font = `${Math.round(fontSize)}px "Microsoft YaHei", "PingFang SC", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const maxTextWidth = n.radius * 1.6;
+    if (ctx.measureText(n.word).width > maxTextWidth) {
+      // 简单截断
+      let text = n.word;
+      while (text.length > 1 && ctx.measureText(text + '…').width > maxTextWidth) {
+        text = text.slice(0, -1);
+      }
+      ctx.fillText(text + (n.word.length > text.length ? '…' : ''), n.x, n.y);
+    } else {
+      ctx.fillText(n.word, n.x, n.y);
+    }
+  }
+
+  ctx.restore();
+}
+
+// ===== 保存项目 =====
+
+async function createConnection(fromId, toId) {
+  const page = STATE.graph[STATE.focusId];
+  if (!page) return;
+  if (!page.children) page.children = [];
+
+  // 检查是否已存在连接
+  const existing = page.children.find(c => c.targetPageId === toId);
+  if (existing) {
+    log('连接已存在', 'warn');
+    return;
+  }
+
+  const targetPage = STATE.graph[toId];
+  page.children.push({
+    word: targetPage?.word || toId,
+    targetPageId: toId,
+    weight: Math.floor(Math.random() * 100) + 1,
+    description: targetPage?.description || '',
+    connection: { label: '', style: 'solid-arrow', color: '#888888' },
+    sphere: { style: 'glass', color: '#6ab0ff', radius: 46 }
+  });
+
+  allNodes = computeLayout(STATE.focusId);
+  nodeAnimStates.clear();
+  render();
+  updateUI();
+  log(`创建连接: ${fromId} → ${toId}`, 'ok');
+}
+
+async function saveProject() {
+  try {
+    if (STATE.dirHandle) {
+      // File System Access API 保存
+      for (const [id, page] of Object.entries(STATE.graph)) {
+        if (id === 'config') continue;
+        const fileHandle = await STATE.dirHandle.getFileHandle(`${id}.json`, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(page, null, 2));
+        await writable.close();
+      }
+      log('项目已保存到文件夹', 'ok');
+      await showDialog({ title: '✅ 保存成功', msg: '所有 JSON 文件已更新。', buttons: [{ text: '确定', value: null, primary: true }] });
+    } else {
+      // 下载为 ZIP
+      const zip = new JSZip();
+      for (const [id, page] of Object.entries(STATE.graph)) {
+        if (id === 'config') continue;
+        zip.file(`${id}.json`, JSON.stringify(page, null, 2));
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (STATE.projectPath || 'brainmap-project') + '.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+      log('项目已下载为 ZIP', 'ok');
+    }
+  } catch (e) {
+    log(`保存失败: ${e.message}`, 'err');
+    await showDialog({ title: '❌ 保存失败', msg: e.message, buttons: [{ text: '确定', value: null, primary: true }] });
+  }
+}
+
+// ===== 打开项目对话框 =====
+
+async function openProjectDialog() {
+  const result = await showDialog({
+    title: '📂 打开项目',
+    msg: '选择打开方式：',
+    buttons: [
+      { text: '选择文件夹', value: 'dir', primary: true },
+      { text: '上传 ZIP', value: 'zip' },
+      { text: '输入路径', value: 'path' },
+      { text: '取消', value: 'cancel' }
+    ]
+  });
+
+  if (result === 'cancel' || result === undefined) return;
+
+  if (result === 'dir') {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      hideWelcome();
+      showLoading();
+      await loadProject('', dirHandle);
+      showApp();
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        log(`文件夹选择失败: ${e.message}`, 'err');
+        await showDialog({ title: '❌ 打开失败', msg: `无法打开文件夹：\n${e.message}`, buttons: [{ text: '确定', value: null, primary: true }] });
+      }
+    }
+  } else if (result === 'zip') {
+    // 上传 ZIP
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.zip';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      hideWelcome();
+      showLoading();
+      try {
+        const zip = await JSZip.loadAsync(file);
+        const graph = {};
+        const jsonFiles = Object.keys(zip.files).filter(n => n.endsWith('.json'));
+        for (const fname of jsonFiles) {
+          const content = await zip.files[fname].async('string');
+          const pageId = fname.replace(/\.json$/, '');
+          try {
+            graph[pageId] = JSON.parse(content);
+          } catch (parseErr) {
+            log(`ZIP 中 ${fname} 解析失败: ${parseErr.message}`, 'warn');
+          }
+        }
+        if (Object.keys(graph).length === 0) {
+          throw new Error('ZIP 中没有找到有效的 JSON 文件');
+        }
+        STATE.graph = graph;
+        STATE.projectPath = file.name.replace(/\.zip$/, '');
+        STATE.dirHandle = null;
+        buildSearchIndex();
+        const rootId = graph.config?.rootPageId || Object.keys(graph)[0];
+        await navigateTo(rootId, false);
+        showApp();
+        log('ZIP 项目加载完成', 'ok');
+      } catch (e) {
+        log(`ZIP 加载失败: ${e.message}`, 'err');
+        await showDialog({ title: '❌ ZIP 加载失败', msg: e.message, buttons: [{ text: '确定', value: null, primary: true }] });
+        showWelcome();
+      }
+    };
+    input.click();
+  } else if (result === 'path') {
+    const path = await showDialog({
+      title: '📂 输入路径',
+      msg: '输入脑图项目文件夹的完整路径：',
+      input: true,
+      buttons: [
+        { text: '打开', value: 'open', primary: true },
+        { text: '取消', value: 'cancel' }
+      ]
+    });
+    if (path && path !== 'cancel') {
+      await loadProjectFromPath(path.trim());
+    }
+  }
+}
+
+// ===== 内置演示数据 =====
+
+function loadBuiltInDemo() {
+  log('加载内置演示数据...', 'info');
+  const demoData = getBuiltInDemoData();
+  STATE.graph = demoData;
+  STATE.projectPath = '内置演示';
+  STATE.history = [];
+  STATE.historyIndex = -1;
+  STATE.viewport = { x: 0, y: 0, scale: 1 };
+
+  buildSearchIndex();
+  navigateTo('INDEX', false);
+  showApp();
+}
+
+function getBuiltInDemoData() {
+  return {
+    config: {
+      rootPageId: 'INDEX',
+      transition: 'zoom',
+      theme: 'dark',
+      defaults: {
+        mainSphere: { radius: 80, style: 'glass', color: '#4a90d9', fontSize: 22, fontColor: '#ffffff', fontFamily: 'Microsoft YaHei' },
+        childSphere: { radius: 46, style: 'glass', color: '#6ab0ff', fontSize: 13, fontColor: '#ffffff', fontFamily: 'Microsoft YaHei' },
+        connection: { style: 'solid-arrow', color: '#888888', width: 2, labelFontSize: 12, labelFontColor: '#cccccc' }
+      }
+    },
+    INDEX: {
+      id: 'INDEX', word: '六艺', description: '六艺是中国古代儒家倡导的六种基本才能：礼、乐、射、御、书、数。\n\n这是古代君子的必修课程，涵盖了道德修养、艺术审美、体育军事、实用技能等方方面面。',
+      children: [
+        { word: '礼', targetPageId: 'li', weight: 1, description: '礼：道德规范与社会秩序', connection: { label: '规范', style: 'solid-arrow', color: '#ff6b6b' }, sphere: { style: 'glass', color: '#ff6b6b' } },
+        { word: '乐', targetPageId: 'yue', weight: 2, description: '乐：音乐艺术与礼乐制度', connection: { label: '和谐', style: 'solid-arrow', color: '#ffd93d' }, sphere: { style: 'metal', color: '#ffd93d' } },
+        { word: '射', targetPageId: 'she', weight: 3, description: '射：射箭技艺与武德修养', connection: { label: '准心', style: 'solid-arrow', color: '#6bcb77' }, sphere: { style: 'matte', color: '#6bcb77' } },
+        { word: '御', targetPageId: 'yu', weight: 4, description: '御：驾车技艺与 bodily coordination', connection: { label: '控制', style: 'solid-arrow', color: '#4d96ff' }, sphere: { style: 'glass', color: '#4d96ff' } },
+        { word: '书', targetPageId: 'shu', weight: 5, description: '书：识字写字与文字学', connection: { label: '书写', style: 'solid-arrow', color: '#9b72cf' }, sphere: { style: 'metal', color: '#9b72cf' } },
+        { word: '数', targetPageId: 'shu2', weight: 6, description: '数：计数算术与天文历法', connection: { label: '计算', style: 'solid-arrow', color: '#ff9a3c' }, sphere: { style: 'wireframe', color: '#ff9a3c' } }
+      ]
+    },
+    li: {
+      id: 'li', word: '礼', description: '礼者，礼节、礼仪也。\n\n是六艺之首，包括吉礼、凶礼、军礼、宾礼、嘉礼五礼。礼不仅是外在仪式，更是内在道德修养的体现。',
+      children: [
+        { word: '冠礼', targetPageId: 'guanli', weight: 1, description: '冠礼：男子成人之礼', connection: { label: '成人', style: 'solid', color: '#ff6b6b' }, sphere: { style: 'glass', color: '#ff6b6b' } },
+        { word: '婚礼', targetPageId: 'hunli', weight: 2, description: '婚礼：婚姻缔结之礼', connection: { label: '婚姻', style: 'solid', color: '#ff8fab' }, sphere: { style: 'glass', color: '#ff8fab' } },
+        { word: '丧礼', targetPageId: 'sangli', weight: 3, description: '丧礼：哀悼亡者之礼', connection: { label: '哀悼', style: 'solid', color: '#bdc3c7' }, sphere: { style: 'matte', color: '#95a5a6' } },
+        { word: '祭礼', targetPageId: 'jili', weight: 4, description: '祭礼：敬天祭祖之礼', connection: { label: '敬天', style: 'dashed', color: '#e74c3c' }, sphere: { style: 'metal', color: '#e74c3c' } },
+        { word: '军礼', targetPageId: 'junli', weight: 5, description: '军礼：征伐阅武之礼', connection: { label: '征伐', style: 'dashed', color: '#c0392b' }, sphere: { style: 'wireframe', color: '#c0392b' } },
+        { word: '宾礼', targetPageId: 'binli', weight: 6, description: '宾礼：朝聘会同之礼', connection: { label: '朝聘', style: 'dashed', color: '#d35400' }, sphere: { style: 'glass', color: '#d35400' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 7, description: '返回六艺总览', connection: { label: '返回', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    yue: {
+      id: 'yue', word: '乐', description: '乐者，音乐也。\n\n包括声乐、器乐，以及与之相关的礼乐制度。古代以礼乐治国，乐与礼相辅相成。',
+      children: [
+        { word: '五音', targetPageId: 'wuyin', weight: 1, description: '五音：宫商角徵羽', connection: { label: '音阶', style: 'solid', color: '#f1c40f' }, sphere: { style: 'glass', color: '#f1c40f' } },
+        { word: '八音', targetPageId: 'bayin', weight: 2, description: '八音：金石丝竹匏土革木', connection: { label: '乐器', style: 'solid', color: '#e67e22' }, sphere: { style: 'metal', color: '#e67e22' } },
+        { word: '雅乐', targetPageId: 'yale', weight: 3, description: '雅乐：朝廷正乐，庄严肃穆', connection: { label: '正乐', style: 'solid', color: '#f39c12' }, sphere: { style: 'matte', color: '#f39c12' } },
+        { word: '燕乐', targetPageId: 'yanle', weight: 4, description: '燕乐：宴饮之乐，轻松愉悦', connection: { label: '宴乐', style: 'solid', color: '#e74c3c' }, sphere: { style: 'glass', color: '#e74c3c' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 5, description: '返回六艺总览', connection: { label: '返回', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    she: {
+      id: 'she', word: '射', description: '射者，射箭也。\n\n包括步射、骑射，以及五射之法。射不仅是武技，更讲究心正、身正、志正。',
+      children: [
+        { word: '五射', targetPageId: 'wushe', weight: 1, description: '五射：白矢、参连、剡注、襄尺、井仪', connection: { label: '技法', style: 'solid', color: '#2ecc71' }, sphere: { style: 'glass', color: '#2ecc71' } },
+        { word: '步射', targetPageId: 'bushe', weight: 2, description: '步射：站立射箭', connection: { label: '立射', style: 'solid', color: '#27ae60' }, sphere: { style: 'matte', color: '#27ae60' } },
+        { word: '骑射', targetPageId: 'qishe', weight: 3, description: '骑射：马背射箭', connection: { label: '马射', style: 'solid', color: '#1abc9c' }, sphere: { style: 'metal', color: '#1abc9c' } },
+        { word: '弓道', targetPageId: 'gongdao', weight: 4, description: '弓道：射以观德', connection: { label: '修德', style: 'solid', color: '#16a085' }, sphere: { style: 'wireframe', color: '#16a085' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 5, description: '返回六艺总览', connection: { label: '返回', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    yu: {
+      id: 'yu', word: '御', description: '御者，驾车也。\n\n包括鸣和鸾、逐水曲、过君表、舞交衢、逐禽左等御术。御要求驾驭者心手合一。',
+      children: [
+        { word: '鸣和鸾', targetPageId: 'mingheluan', weight: 1, description: '鸣和鸾：车行鸾铃和鸣', connection: { label: '铃鸣', style: 'solid', color: '#3498db' }, sphere: { style: 'glass', color: '#3498db' } },
+        { word: '逐水曲', targetPageId: 'zhuishuiqu', weight: 2, description: '逐水曲：沿水岸驰驱', connection: { label: '水曲', style: 'solid', color: '#2980b9' }, sphere: { style: 'matte', color: '#2980b9' } },
+        { word: '过君表', targetPageId: 'guojunbiao', weight: 3, description: '过君表：经过君主位处', connection: { label: '君表', style: 'solid', color: '#1abc9c' }, sphere: { style: 'metal', color: '#1abc9c' } },
+        { word: '舞交衢', targetPageId: 'wujiaoqu', weight: 4, description: '舞交衢：在交叉路口回旋', connection: { label: '交衢', style: 'solid', color: '#00cec9' }, sphere: { style: 'wireframe', color: '#00cec9' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 5, description: '返回六艺总览', connection: { label: '返回', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    shu: {
+      id: 'shu', word: '书', description: '书者，识字、写字也。\n\n包括六书（象形、指事、会意、形声、转注、假借），是中国文字学的理论基础。',
+      children: [
+        { word: '六书', targetPageId: 'liushu', weight: 1, description: '六书：造字与用字的六种方法', connection: { label: '总论', style: 'solid', color: '#9b59b6' }, sphere: { style: 'glass', color: '#9b59b6' } },
+        { word: '象形', targetPageId: 'xiangxing', weight: 2, description: '象形：画成其物，随体诘诎', connection: { label: '画物', style: 'solid', color: '#8e44ad' }, sphere: { style: 'matte', color: '#8e44ad' } },
+        { word: '指事', targetPageId: 'zhishi', weight: 3, description: '指事：视而可识，察而见意', connection: { label: '示意', style: 'solid', color: '#6c5ce7' }, sphere: { style: 'metal', color: '#6c5ce7' } },
+        { word: '会意', targetPageId: 'huiyi', weight: 4, description: '会意：比类合谊，以见指撝', connection: { label: '合意', style: 'solid', color: '#a29bfe' }, sphere: { style: 'wireframe', color: '#a29bfe' } },
+        { word: '形声', targetPageId: 'xingsheng', weight: 5, description: '形声：以事为名，取譬相成', connection: { label: '声旁', style: 'solid', color: '#fd79a8' }, sphere: { style: 'glass', color: '#fd79a8' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 6, description: '返回六艺总览', connection: { label: '返回', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    shu2: {
+      id: 'shu2', word: '数', description: '数者，计数、算术也。\n\n包括九章算术等古代数学知识，以及天文历法推算。',
+      children: [
+        { word: '九章', targetPageId: 'jiuzhang', weight: 1, description: '九章算术：中国古代最重要的数学著作', connection: { label: '算术', style: 'solid', color: '#e67e22' }, sphere: { style: 'glass', color: '#e67e22' } },
+        { word: '算经', targetPageId: 'suanjing', weight: 2, description: '算经十书：古代数学经典合集', connection: { label: '经典', style: 'solid', color: '#d35400' }, sphere: { style: 'metal', color: '#d35400' } },
+        { word: '珠算', targetPageId: 'zhusuan', weight: 3, description: '珠算：以算盘为工具的速算方法', connection: { label: '速算', style: 'solid', color: '#e74c3c' }, sphere: { style: 'matte', color: '#e74c3c' } },
+        { word: '天文', targetPageId: 'tianwen', weight: 4, description: '天文历法：以数推天，制定历法', connection: { label: '历法', style: 'solid', color: '#f39c12' }, sphere: { style: 'wireframe', color: '#f39c12' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 5, description: '返回六艺总览', connection: { label: '返回', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    // 礼的分支
+    guanli: {
+      id: 'guanli', word: '冠礼', description: '冠礼是古代男子的成人礼。\n\n一般在二十岁时举行，由父亲主持，加冠三次（缁布冠、皮弁、爵弁），表示已成年，可以承担社会责任。',
+      children: [
+        { word: '礼', targetPageId: 'li', weight: 1, description: '返回礼', connection: { label: '返回', style: 'solid-arrow', color: '#ff6b6b' }, sphere: { style: 'glass', color: '#ff6b6b' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    hunli: {
+      id: 'hunli', word: '婚礼', description: '婚礼是婚姻礼仪。\n\n包括纳采、问名、纳吉、纳征、请期、亲迎六礼，是古代婚姻制度的完整程序。',
+      children: [
+        { word: '礼', targetPageId: 'li', weight: 1, description: '返回礼', connection: { label: '返回', style: 'solid-arrow', color: '#ff6b6b' }, sphere: { style: 'glass', color: '#ff6b6b' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    sangli: {
+      id: 'sangli', word: '丧礼', description: '丧礼是哀悼死者的礼仪。\n\n包括初终、报丧、设床、沐浴、饭含、小敛、大敛、殡、葬、服丧等程序，体现了儒家慎终追远的思想。',
+      children: [
+        { word: '礼', targetPageId: 'li', weight: 1, description: '返回礼', connection: { label: '返回', style: 'solid-arrow', color: '#ff6b6b' }, sphere: { style: 'glass', color: '#ff6b6b' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    jili: {
+      id: 'jili', word: '祭礼', description: '祭礼是敬天祭祖的礼仪。\n\n包括郊祀、宗庙祭祀、社稷祭祀等，是古代国家与家族最重要的礼仪活动。',
+      children: [
+        { word: '礼', targetPageId: 'li', weight: 1, description: '返回礼', connection: { label: '返回', style: 'solid-arrow', color: '#e74c3c' }, sphere: { style: 'metal', color: '#e74c3c' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    junli: {
+      id: 'junli', word: '军礼', description: '军礼是征伐阅武的礼仪。\n\n包括出师、凯旋、献俘、大阅等，体现了古代"国之大事，在祀与戎"的传统。',
+      children: [
+        { word: '礼', targetPageId: 'li', weight: 1, description: '返回礼', connection: { label: '返回', style: 'solid-arrow', color: '#c0392b' }, sphere: { style: 'wireframe', color: '#c0392b' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    binli: {
+      id: 'binli', word: '宾礼', description: '宾礼是朝聘会同的礼仪。\n\n包括诸侯朝见天子、诸侯会盟、使者往来等外交礼仪。',
+      children: [
+        { word: '礼', targetPageId: 'li', weight: 1, description: '返回礼', connection: { label: '返回', style: 'solid-arrow', color: '#d35400' }, sphere: { style: 'glass', color: '#d35400' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    // 乐的分支
+    wuyin: {
+      id: 'wuyin', word: '五音', description: '五音即宫、商、角、徵、羽。\n\n是中国古代音乐的基本音阶，对应五行（土金木火水）和五脏（脾肺肝心肾）。',
+      children: [
+        { word: '乐', targetPageId: 'yue', weight: 1, description: '返回乐', connection: { label: '返回', style: 'solid-arrow', color: '#f1c40f' }, sphere: { style: 'glass', color: '#f1c40f' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    bayin: {
+      id: 'bayin', word: '八音', description: '八音是金、石、丝、竹、匏、土、革、木八类乐器。\n\n是中国最早的乐器分类法，涵盖了打击乐、弦乐、管乐、吹奏乐等。',
+      children: [
+        { word: '乐', targetPageId: 'yue', weight: 1, description: '返回乐', connection: { label: '返回', style: 'solid-arrow', color: '#e67e22' }, sphere: { style: 'metal', color: '#e67e22' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    yale: {
+      id: 'yale', word: '雅乐', description: '雅乐是朝廷正乐。\n\n用于祭祀天地祖先、朝会宴飨等庄重场合，风格庄严肃穆，节奏舒缓。',
+      children: [
+        { word: '乐', targetPageId: 'yue', weight: 1, description: '返回乐', connection: { label: '返回', style: 'solid-arrow', color: '#f39c12' }, sphere: { style: 'matte', color: '#f39c12' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    yanle: {
+      id: 'yanle', word: '燕乐', description: '燕乐是宴饮之乐。\n\n用于宫廷宴享、贵族聚会等轻松场合，风格活泼流畅，常以琵琶、筝等丝竹乐器为主。',
+      children: [
+        { word: '乐', targetPageId: 'yue', weight: 1, description: '返回乐', connection: { label: '返回', style: 'solid-arrow', color: '#e74c3c' }, sphere: { style: 'glass', color: '#e74c3c' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    // 射的分支
+    wushe: {
+      id: 'wushe', word: '五射', description: '五射是五种射箭技法。\n\n白矢（穿靶）、参连（连珠箭）、剡注（速射）、襄尺（君臣之礼）、井仪（四箭穿靶成井形）。',
+      children: [
+        { word: '射', targetPageId: 'she', weight: 1, description: '返回射', connection: { label: '返回', style: 'solid-arrow', color: '#2ecc71' }, sphere: { style: 'glass', color: '#2ecc71' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    bushe: {
+      id: 'bushe', word: '步射', description: '步射是站立射箭。\n\n要求站姿端正、呼吸平稳、眼手合一，是最基础的射术形式。',
+      children: [
+        { word: '射', targetPageId: 'she', weight: 1, description: '返回射', connection: { label: '返回', style: 'solid-arrow', color: '#27ae60' }, sphere: { style: 'matte', color: '#27ae60' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    qishe: {
+      id: 'qishe', word: '骑射', description: '骑射是马背射箭。\n\n要求在马匹奔驰中保持平衡，同时瞄准射击，难度远高于步射。',
+      children: [
+        { word: '射', targetPageId: 'she', weight: 1, description: '返回射', connection: { label: '返回', style: 'solid-arrow', color: '#1abc9c' }, sphere: { style: 'metal', color: '#1abc9c' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    gongdao: {
+      id: 'gongdao', word: '弓道', description: '弓道是射以观德的修养之道。\n\n日本弓道源于中国射礼，强调"正射必中"，注重心身统一与礼仪规范。',
+      children: [
+        { word: '射', targetPageId: 'she', weight: 1, description: '返回射', connection: { label: '返回', style: 'solid-arrow', color: '#16a085' }, sphere: { style: 'wireframe', color: '#16a085' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    // 御的分支
+    mingheluan: {
+      id: 'mingheluan', word: '鸣和鸾', description: '鸣和鸾：车行时鸾铃和鸣。\n\n要求御者控制车速与节奏，使车上的鸾铃发出和谐的声音，体现御术的精妙。',
+      children: [
+        { word: '御', targetPageId: 'yu', weight: 1, description: '返回御', connection: { label: '返回', style: 'solid-arrow', color: '#3498db' }, sphere: { style: 'glass', color: '#3498db' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    zhuishuiqu: {
+      id: 'zhuishuiqu', word: '逐水曲', description: '逐水曲：沿水岸曲折驰驱。\n\n要求御者在水岸曲折道路上灵活驾驭，不使车轮沾水。',
+      children: [
+        { word: '御', targetPageId: 'yu', weight: 1, description: '返回御', connection: { label: '返回', style: 'solid-arrow', color: '#2980b9' }, sphere: { style: 'matte', color: '#2980b9' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    guojunbiao: {
+      id: 'guojunbiao', word: '过君表', description: '过君表：经过君主位处。\n\n要求御者在经过君主所在位置时，保持恭敬姿态与平稳车速，体现君臣之礼。',
+      children: [
+        { word: '御', targetPageId: 'yu', weight: 1, description: '返回御', connection: { label: '返回', style: 'solid-arrow', color: '#1abc9c' }, sphere: { style: 'metal', color: '#1abc9c' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    wujiaoqu: {
+      id: 'wujiaoqu', word: '舞交衢', description: '舞交衢：在交叉路口回旋。\n\n要求御者在道路交汇处灵活转向，如舞蹈般优雅。',
+      children: [
+        { word: '御', targetPageId: 'yu', weight: 1, description: '返回御', connection: { label: '返回', style: 'solid-arrow', color: '#00cec9' }, sphere: { style: 'wireframe', color: '#00cec9' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    // 书的分支
+    liushu: {
+      id: 'liushu', word: '六书', description: '六书是造字与用字的六种方法。\n\n包括象形、指事、会意、形声（造字法）与转注、假借（用字法），是理解汉字结构的钥匙。',
+      children: [
+        { word: '书', targetPageId: 'shu', weight: 1, description: '返回书', connection: { label: '返回', style: 'solid-arrow', color: '#9b59b6' }, sphere: { style: 'glass', color: '#9b59b6' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    xiangxing: {
+      id: 'xiangxing', word: '象形', description: '象形：画成其物，随体诘诎。\n\n如日、月、山、水、人等字，直接描绘事物外形，是最原始的造字法。',
+      children: [
+        { word: '书', targetPageId: 'shu', weight: 1, description: '返回书', connection: { label: '返回', style: 'solid-arrow', color: '#8e44ad' }, sphere: { style: 'matte', color: '#8e44ad' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    zhishi: {
+      id: 'zhishi', word: '指事', description: '指事：视而可识，察而见意。\n\n如上、下、本、末、刃等字，用抽象符号指示概念，或在象形字上加标记表意。',
+      children: [
+        { word: '书', targetPageId: 'shu', weight: 1, description: '返回书', connection: { label: '返回', style: 'solid-arrow', color: '#6c5ce7' }, sphere: { style: 'metal', color: '#6c5ce7' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    huiyi: {
+      id: 'huiyi', word: '会意', description: '会意：比类合谊，以见指撝。\n\n如武（止戈为武）、信（人言为信）、明（日月为明）等字，组合多个字表达新义。',
+      children: [
+        { word: '书', targetPageId: 'shu', weight: 1, description: '返回书', connection: { label: '返回', style: 'solid-arrow', color: '#a29bfe' }, sphere: { style: 'wireframe', color: '#a29bfe' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    xingsheng: {
+      id: 'xingsheng', word: '形声', description: '形声：以事为名，取譬相成。\n\n如江（水+工）、河（水+可）、松（木+公）等字，由形旁表意、声旁表音，是汉字最主要的造字法。',
+      children: [
+        { word: '书', targetPageId: 'shu', weight: 1, description: '返回书', connection: { label: '返回', style: 'solid-arrow', color: '#fd79a8' }, sphere: { style: 'glass', color: '#fd79a8' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    // 数的分支
+    jiuzhang: {
+      id: 'jiuzhang', word: '九章', description: '九章算术是中国古代最重要的数学著作。\n\n包括方田、粟米、衰分、少广、商功、均输、盈不足、方程、勾股九章，涵盖了分数、方程、几何等内容。',
+      children: [
+        { word: '数', targetPageId: 'shu2', weight: 1, description: '返回数', connection: { label: '返回', style: 'solid-arrow', color: '#e67e22' }, sphere: { style: 'glass', color: '#e67e22' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    suanjing: {
+      id: 'suanjing', word: '算经', description: '算经十书是古代数学经典合集。\n\n包括周髀算经、九章算术、海岛算经、孙子算经、张丘建算经等十部数学著作。',
+      children: [
+        { word: '数', targetPageId: 'shu2', weight: 1, description: '返回数', connection: { label: '返回', style: 'solid-arrow', color: '#d35400' }, sphere: { style: 'metal', color: '#d35400' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    zhusuan: {
+      id: 'zhusuan', word: '珠算', description: '珠算是以算盘为工具的速算方法。\n\n包括加减乘除、开方、平方等运算，口诀简洁高效，是中国古代最重要的计算工具。',
+      children: [
+        { word: '数', targetPageId: 'shu2', weight: 1, description: '返回数', connection: { label: '返回', style: 'solid-arrow', color: '#e74c3c' }, sphere: { style: 'matte', color: '#e74c3c' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    },
+    tianwen: {
+      id: 'tianwen', word: '天文', description: '天文历法是以数推天、制定历法的学问。\n\n包括二十四节气、干支纪年、日月五星运行推算等，是中国古代最精密的数学应用。',
+      children: [
+        { word: '数', targetPageId: 'shu2', weight: 1, description: '返回数', connection: { label: '返回', style: 'solid-arrow', color: '#f39c12' }, sphere: { style: 'wireframe', color: '#f39c12' } },
+        { word: '六艺', targetPageId: 'INDEX', weight: 2, description: '返回六艺', connection: { label: '直达', style: 'dashed-arrow', color: '#4a90d9' }, sphere: { style: 'glass', color: '#4a90d9' } }
+      ]
+    }
+  };
+}
+
+// ===== 欢迎页事件 =====
+
+function initWelcome() {
+  document.getElementById('btn-demo').onclick = () => {
+    hideWelcome();
+    showLoading();
+    setTimeout(() => {
+      loadBuiltInDemo();
+    }, 100);
+  };
+
+  document.getElementById('btn-open-dir').onclick = openProjectDialog;
+
+  // 【修改点】毕业纪念快捷入口：一键加载在线项目
+  document.getElementById('btn-graduation').onclick = async () => {
+    hideWelcome();
+    showLoading();
+    await loadProjectFromPath(ONLINE_PROJECT_URL);
+    showApp();
+  };
+
+  document.getElementById('btn-input-path').onclick = async () => {
+    const path = await showDialog({
+      title: '📂 输入路径或在线链接',
+      // 【修改点】inputValue 默认值即在线项目链接，用户可修改为自己的 URL
+      msg: '输入本地文件夹路径或在线 ZIP 链接：',
+      input: true,
+      inputValue: ONLINE_PROJECT_URL,
+      buttons: [
+        { text: '打开', value: 'open', primary: true },
+        { text: '取消', value: 'cancel' }
+      ]
+    });
+    if (path && path !== 'cancel') {
+      hideWelcome();
+      showLoading();
+      await loadProjectFromPath(path.trim());
+      showApp();
+    }
+  };
+
+  // 从最近项目加载
+  loadRecentProjects();
+  renderRecentList();
+}
+
+// ===== 初始化 =====
+
+window.addEventListener('resize', resizeCanvas);
+
+async function init() {
+  const step = (name) => { _logRaw('info', '[init] ' + name); };
+  try {
+    step('开始初始化 BrainSphere 2D');
+
+    step('resizeCanvas...');
+    resizeCanvas();
+
+    step('initSettings...');
+    initSettings();
+
+    step('initDebug...');
+    initDebug();
+
+    step('initKeyboard...');
+    initKeyboard();
+
+    step('initToolbar...');
+    initToolbar();
+
+    step('initWelcome...');
+    initWelcome();
+
+    step('检查 URL 参数...');
+    const params = new URLSearchParams(window.location.search);
+    const pathParam = params.get('path');
+    if (pathParam) {
+      step('检测到 path 参数: ' + pathParam);
+      hideWelcome();
+      showLoading();
+      try {
+        await loadProjectFromPath(pathParam);
+        showApp();
+        step('从路径加载完成');
+      } catch (e) {
+        _logRaw('err', '从路径加载失败: ' + e.message);
+        showWelcome();
+      }
+    } else {
+      step('无 path 参数，显示欢迎页');
+      showWelcome();
+    }
+
+    _logRaw('ok', '初始化完成，等待用户操作');
+  } catch (e) {
+    _logRaw('err', '初始化失败: ' + (e && e.message ? e.message : String(e)));
+    _logRaw('err', '堆栈: ' + (e && e.stack ? e.stack : '无'));
+    // 即使出错也尝试显示欢迎页，避免卡死
+    try {
+      const ls = document.getElementById('loading-screen');
+      if (ls) ls.style.display = 'none';
+      const ws = document.getElementById('welcome-screen');
+      if (ws) ws.style.display = 'flex';
+      _logRaw('warn', '已强制切换到欢迎页（初始化出错后）');
+    } catch (_) {}
+  }
+}
+
+init();
+
+/* ===== 暴露 API 到 window（供外部调用） ===== */
+try {
+  window.BrainSphere = {
+    navigateTo,
+    getGraph: () => STATE.graph,
+    getFocusId: () => STATE.focusId,
+    exportPNG,
+    applyTheme,
+    loadProject: (path) => { hideWelcome(); showLoading(); return loadProject(path); }
+  };
+} catch (e) {
+  console.error('API 暴露失败:', e);
+}
+
+// ===== 移动端虚拟摇杆控件 =====
+function isMobileDevice() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    || ('ontouchstart' in window && window.innerWidth < 900);
+}
+
+let _mobileControlsVisible = false;
+let _mcIntervalId = null;
+
+function toggleMobileControls() {
+  const panel = document.getElementById('mobile-controls');
+  const btn = document.getElementById('mobile-toggle');
+  if (!panel) return;
+  _mobileControlsVisible = !_mobileControlsVisible;
+  if (_mobileControlsVisible) {
+    panel.style.display = 'flex';
+    if (btn) btn.classList.add('active');
+    log('虚拟摇杆已显示', 'info');
+  } else {
+    panel.style.display = 'none';
+    if (btn) btn.classList.remove('active');
+    // 停止所有正在进行的动作
+    if (_mcIntervalId) { clearInterval(_mcIntervalId); _mcIntervalId = null; }
+    log('虚拟摇杆已隐藏', 'info');
+  }
+}
+
+function initMobileControls() {
+  const panel = document.getElementById('mobile-controls');
+  if (!panel) return;
+  panel.style.display = 'none'; // 默认隐藏
+
+  const speed = 8;        // 平移速度（px/帧）
+  const zoomSpeed = 1.03; // 缩放速度
+
+  function startAction(action) {
+    if (_mcIntervalId) clearInterval(_mcIntervalId);
+    action();
+    _mcIntervalId = setInterval(action, 16); // ~60fps
+  }
+  function stopAction() {
+    if (_mcIntervalId) { clearInterval(_mcIntervalId); _mcIntervalId = null; }
+  }
+
+  function bindBtn(btn, action) {
+    if (!btn) return;
+    const start = (e) => { e.preventDefault(); startAction(action); };
+    const stop  = (e) => { e.preventDefault(); stopAction(); };
+    btn.addEventListener('mousedown', start);
+    btn.addEventListener('touchstart', start, { passive: false });
+    btn.addEventListener('mouseup', stop);
+    btn.addEventListener('mouseleave', stop);
+    btn.addEventListener('touchend', stop);
+    btn.addEventListener('touchcancel', stop);
+  }
+
+  const vp = STATE.viewport;
+  bindBtn(panel.querySelector('[data-dir="up"]'),    () => { vp.y += speed; render(); });
+  bindBtn(panel.querySelector('[data-dir="down"]'),  () => { vp.y -= speed; render(); });
+  bindBtn(panel.querySelector('[data-dir="left"]'),  () => { vp.x += speed; render(); });
+  bindBtn(panel.querySelector('[data-dir="right"]'), () => { vp.x -= speed; render(); });
+  bindBtn(panel.querySelector('[data-zoom="in"]'),   () => { vp.scale = Math.min(4, vp.scale * zoomSpeed); render(); });
+  bindBtn(panel.querySelector('[data-zoom="out"]'),  () => { vp.scale = Math.max(0.15, vp.scale / zoomSpeed); render(); });
+
+  // 绑定日志面板下方的 toggle 按钮
+  const toggleBtn = document.getElementById('mobile-toggle');
+  if (toggleBtn) {
+    toggleBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleMobileControls();
+    };
+  }
+}
+
+// 页面加载完成后初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initMobileControls);
+} else {
+  initMobileControls();
+}
+</script>
+
+<!-- ===== 移动端虚拟摇杆控件 ===== -->
+<div id="mobile-controls">
+  <div class="mc-row">
+    <button class="mc-btn" data-dir="up">▲</button>
+  </div>
+  <div class="mc-row">
+    <button class="mc-btn" data-dir="left">◄</button>
+    <button class="mc-btn" data-dir="down">▼</button>
+    <button class="mc-btn" data-dir="right">►</button>
+  </div>
+  <div class="mc-row" style="margin-top:4px;">
+    <button class="mc-btn mc-btn-zoom" data-zoom="in">+</button>
+    <button class="mc-btn mc-btn-zoom" data-zoom="out">−</button>
+  </div>
+</div>
+
+</body>
+</html>
