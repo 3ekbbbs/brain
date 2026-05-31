@@ -903,8 +903,11 @@ _logRaw('info', '日志系统就绪');
 // ===== 在线项目配置（用户可修改）=====
 // 【修改点】主要方式：你的域名直接加载
 const ONLINE_PROJECT_URL_PRIMARY = 'https://brain.3egames.cloud/graduation.zip';
-// 【修改点】备用方式：同域根目录（主要方式失败时自动回退）
-const ONLINE_PROJECT_URL_FALLBACK = './graduation.zip';
+// 【修改点】备用方式列表：按顺序尝试
+const ONLINE_PROJECT_URL_FALLBACKS = [
+  './graduation.zip',                       // 同域根目录
+  'http://110.40.237.235/graduation.zip',   // 备用服务器
+];
 // 默认使用主要方式
 const ONLINE_PROJECT_URL = ONLINE_PROJECT_URL_PRIMARY;
 
@@ -1173,8 +1176,8 @@ async function loadProjectViaFetch(path) {
 }
 
 // 【修改点】从在线 URL 加载 ZIP 项目（支持 http/https 链接）
-// fallbackUrl: 主要 URL 加载失败时自动尝试的备用地址
-async function loadProjectFromURL(url, fallbackUrl = null) {
+// fallbacks: 备用地址数组，主要 URL 加载失败时按顺序尝试
+async function loadProjectFromURL(url, fallbacks = []) {
   log(`从在线地址加载 ZIP: ${url}`, 'info');
   try {
     const resp = await fetch(url);
@@ -1206,9 +1209,11 @@ async function loadProjectFromURL(url, fallbackUrl = null) {
     return graph.config || null;
   } catch (e) {
     log(`在线加载失败: ${e.message}`, 'err');
-    if (fallbackUrl && fallbackUrl !== url) {
-      log(`尝试备用地址: ${fallbackUrl}`, 'warn');
-      return await loadProjectFromURL(fallbackUrl, null);
+    // 【修改点】按顺序尝试备用地址
+    if (fallbacks && fallbacks.length > 0) {
+      const next = fallbacks[0];
+      log(`尝试备用地址: ${next}`, 'warn');
+      return await loadProjectFromURL(next, fallbacks.slice(1));
     }
     return null;
   }
@@ -1228,7 +1233,7 @@ async function loadProject(path, dirHandle = null) {
     configData = await loadProjectViaDirHandle(dirHandle);
   } else if (/^https?:\/\//.test(path) || /\.zip$/i.test(path)) {
     // 【修改点】在线 URL 或 ZIP 文件路径，直接 fetch ZIP
-    configData = await loadProjectFromURL(path, ONLINE_PROJECT_URL_FALLBACK);
+    configData = await loadProjectFromURL(path, ONLINE_PROJECT_URL_FALLBACKS);
   } else {
     configData = await loadProjectViaFetch(path);
   }
